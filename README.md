@@ -33,7 +33,7 @@ Even with linters and CI checks, significant issues evade detection because they
 
 | Agent | Phase | Purpose | File |
 |-------|-------|---------|------|
-| `codelens-scanner` | A | Single-pass extraction: ripgrep patterns + hotspot deep-dive | `agents/codelens-scanner.md` |
+| `codelens-scanner` | A | Single-pass extraction: ripgrep + ast-grep + fallow + hotspot deep-dive | `agents/codelens-scanner.md` |
 | `security-reviewer` | B | OWASP Top 10 analysis with Context7 CVE checks | `agents/security-reviewer.md` |
 | `architecture-reviewer` | B | SOLID compliance, dependency direction, pattern verification | `agents/architecture-reviewer.md` |
 | `code-quality-reviewer` | B | Complexity, duplication, error handling, async patterns | `agents/code-quality-reviewer.md` |
@@ -124,6 +124,32 @@ Source: [github.com/mksglu/context-mode](https://github.com/mksglu/context-mode)
 
 This prints a checklist showing which tools are connected and install commands for any missing ones.
 
+### Optional Enhancements
+
+These tools enhance specific analysis domains. codelens works without them — they're detected automatically and skipped gracefully when absent.
+
+#### fallow — TS/JS Dead-Code & Duplication
+
+Deterministic codebase intelligence for TypeScript/JavaScript. Finds unused exports, files, dependencies, circular imports, and code duplication.
+
+```bash
+npm install --save-dev fallow
+```
+
+Only activated when a `package.json` is present. Not applicable to Python, Go, or other language projects.
+
+#### ast-grep — Structural Code Search
+
+AST-aware pattern matching using tree-sitter. Supports 20+ languages. Provides zero-false-positive detection for imports, class declarations, empty catch blocks, `eval()` calls, and duplicate boolean conditions — things ripgrep can only approximate with text regex.
+
+```bash
+# npm
+npm install --global @ast-grep/cli
+
+# Homebrew (macOS/Linux)
+brew install ast-grep
+```
+
 ## Command Reference
 
 | Command | Domains | Scope |
@@ -190,7 +216,12 @@ Evaluates keyboard navigation, screen reader compatibility, visual/color contras
 
 codelens uses a **3-phase pipeline** designed to minimize token cost:
 
-**Phase A — Single-Pass Scan:** The scanner walks your scoped file set using ripgrep, running one combined pattern pass across all four domains. For the top 10-15 largest files (complexity hotspots), it extracts structural data: function lists, JSX elements, imports, security signals. Everything is written to `.claude-review/extraction.json`.
+**Phase A — Single-Pass Scan:** The scanner walks your scoped file set using three complementary tools:
+- **ripgrep** for text pattern matching (secrets, console.log, TODO markers, ARIA attributes)
+- **ast-grep** for structural AST patterns (imports, class declarations, empty catch blocks, eval calls) — supports 20+ languages
+- **fallow** for TS/JS dead-code and duplication analysis (unused exports, circular deps, clone families)
+
+For the top 10-15 largest files (complexity hotspots), it extracts structural data: function lists, JSX elements, imports, security signals. Everything is written to `.claude-review/extraction.json`.
 
 **Phase B — Domain Analysis:** Each domain reviewer reads only the extraction data — never your source files directly. Security uses Context7 to verify library versions and check for known CVEs. Architecture verifies patterns against current best practices. All findings are written to `.claude-review/findings/<domain>.json`.
 
@@ -272,6 +303,12 @@ Security, architecture, and code-quality reviewers need Context7 for library ver
 - Use diff scope for PRs: `/review pr-check` only scans changed files
 - The single-pass pipeline already minimizes token cost — large repos simply take longer
 
+### "fallow not found" or missing dead-code findings
+fallow is optional and only runs on TS/JS projects (when `package.json` exists). Install it with `npm i -D fallow`. Without it, dead-code and duplication analysis falls back to ripgrep-based heuristic patterns.
+
+### "ast-grep not found" or structural patterns missing
+ast-grep is optional. Without it, import analysis, class declaration detection, empty catch block detection, and eval matching use ripgrep regex (which may have false positives from strings/comments). Install with `npm i -g @ast-grep/cli` or `brew install ast-grep`.
+
 ## FAQ
 
 **Does it work on non-JS/TS codebases?**
@@ -281,7 +318,7 @@ Yes. The pattern matching works on any language (Python, Go, Ruby, etc.). The JS
 Depends on repo size. A 100-file project takes ~2-3 minutes. A 1000-file project can take 5-10 minutes. Diff-scoped reviews (`pr-check`) are faster since they only scan changed files.
 
 **Can I use it in CI/CD?**
-Not yet — this is on the [Roadmap](#roadmap). The current design requires an interactive Claude Code session. A GitHub Action wrapper is planned.
+Not yet — this is planned. The current design requires an interactive Claude Code session. A GitHub Action wrapper is on the roadmap.
 
 **How do I suppress false positives?**
 Edit the relevant domain agent in `agents/` to remove or adjust the pattern that triggered the false positive. Each agent's criteria section lists all checks — comment out or modify the ones that don't apply to your stack.
