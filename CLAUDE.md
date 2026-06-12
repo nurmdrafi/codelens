@@ -24,11 +24,11 @@ Phase A: codelens-scanner (single-pass extraction)
   → rg pattern scan + hotspot deep-dive
   → fallow dead-code + dupes (TS/JS only, optional)
   → ast-grep structural scan (20+ languages, optional)
-  → writes .claude-review/extraction.json
+  → writes .codelens-review/extraction.json
 
 Phase B: 4 domain reviewers (parallel, read extraction.json only)
   → security-reviewer, architecture-reviewer, code-quality-reviewer, a11y-reviewer
-  → each writes .claude-review/findings/<domain>.json
+  → each writes .codelens-review/findings/<domain>.json
 
 Phase C: codelens-reviewer (orchestrator)
   → cross-domain dedup, severity sort, report compilation
@@ -60,16 +60,32 @@ These are NOT optional. All must be installed and configured:
   marketplace.json         # Marketplace listing metadata
 skills/
   review/
-    SKILL.md               # /review command: parsing, guided mode, setup-check, help, report template
+    SKILL.md               # /codelens:review — full review (all 4 domains)
+  review-security/
+    SKILL.md               # /codelens:review-security
+  review-architecture/
+    SKILL.md               # /codelens:review-architecture
+  review-quality/
+    SKILL.md               # /codelens:review-quality
+  review-a11y/
+    SKILL.md               # /codelens:review-a11y
+  review-pr/
+    SKILL.md               # /codelens:review-pr — PR diff review
+  help/
+    SKILL.md               # /codelens:help — setup check + command list
+  _shared/
+    report-template.md     # Single source of truth for Markdown report format
+    setup-check.md         # Shared setup-verification logic
 agents/
   codelens-scanner.md      # Phase A: single-pass extraction
   codelens-reviewer.md     # Orchestrator: dispatch + compile
   security-reviewer.md     # Phase B: OWASP Top 10
   architecture-reviewer.md # Phase B: SOLID, patterns, dependencies
   code-quality-reviewer.md # Phase B: complexity, duplication, async
-  a11y-reviewer.md# Phase B: WCAG 2.1 AA
+  a11y-reviewer.md        # Phase B: WCAG 2.1 AA
 .claude/
   review-presets.json      # Default presets (pr-check, a11y-audit, full-audit)
+  codelens-exclusions.json # Exclusion config (defaults + byDomain + keepInScope)
 examples/
   sample-report.md         # Anonymized real report for README
 .github/
@@ -119,25 +135,26 @@ Every agent in this pipeline follows these rules:
 - **ctx_execute_file** — never load raw file contents into context for analysis
 - **Evidence-backed findings** — every finding must have file path, line number, code snippet
 - **Cross-domain dedup** — same file:line (±2 lines) across domains → merge into single row
+- **Exclusions honored by all agents** — every search call (scanner + Phase B reviewers) applies patterns from `.claude/codelens-exclusions.json`. `.env` and CI/CD files remain in scope via `keepInScope` rules.
 
 ## Common Workflows
 
 ### Add a new pattern check
 1. Add the `rg` pattern to `agents/codelens-scanner.md` in the combined pattern list (tagged by domain)
 2. Add the evaluation logic to the relevant Phase B agent's criteria section
-3. Test by running `/review <domain>` on a codebase that has the pattern
+3. Test by running `/codelens:review-<domain>` on a codebase that has the pattern
 
 ### Add a new domain
 1. Create `agents/<domain>-reviewer.md` with frontmatter, dependencies, criteria, analysis process, output format
 2. Add domain patterns to `agents/codelens-scanner.md` combined pattern list
 3. Register in `agents/codelens-reviewer.md` domain dispatch table
-4. Add to `skills/review/SKILL.md` command parsing table
+4. Add to `skills/review-<domain>/SKILL.md` command parsing table
 
 ### Modify the report format
-Edit the report template section in `skills/review/SKILL.md`. The orchestrator reads this template when compiling.
+Edit the report template at `skills/_shared/report-template.md`. The orchestrator reads this template when compiling.
 
 ### Test locally
-Copy `agents/` and `skills/` into a test project's `.claude/` dir, then run `/review` variants. For TS/JS projects, install fallow (`npm i -D fallow`) to get dead-code and duplication findings.
+Copy `agents/` and `skills/` into a test project's `.claude/` dir, then run `/codelens:review` variants. For TS/JS projects, install fallow (`npm i -D fallow`) to get dead-code and duplication findings.
 
 ### Release a new version
 1. Update the version header in `CHANGELOG.md` (e.g., add `## [1.2.0] - YYYY-MM-DD`)
