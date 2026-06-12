@@ -77,11 +77,11 @@ If argument is `setup-check`, run these diagnostics and print a checklist:
 ```
 1. ripgrep — run `rg --version` → ✅ installed / ❌ missing (install: brew install ripgrep / apt install ripgrep)
 2. git — run `git --version` → ✅ / ❌
-3. context-mode MCP — try calling ctx_stats → ✅ connected / ⚠️ not connected (optional: reduces token usage on large repos)
-4. Context7 MCP — try calling resolve-library-id → ✅ connected / ⚠️ not connected (optional: enables library version checks for security findings)
+3. context-mode MCP — try calling ctx_stats → ✅ connected / ❌ not connected (required: prevents context window flooding on large repos)
+4. Context7 MCP — try calling resolve-library-id → ✅ connected / ❌ not connected (required: enables library version checks for security findings)
 ```
 
-Print: "Plugin works without optional MCPs, but with reduced accuracy (security/architecture library checks) and higher token usage."
+Print: "context-mode and Context7 MCPs are required for proper operation. Install both before using codelens."
 
 ## Help
 

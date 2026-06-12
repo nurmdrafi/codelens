@@ -2,10 +2,16 @@
 name: code-quality-reviewer
 description: |
   Use when the codelens orchestrator needs Phase B code quality analysis. Reads extraction data and produces code quality findings. Internal agent for the codelens review pipeline — never invoke directly for user requests.
-tools: ["Read", "Write", "Bash"]
+tools: ["Read", "Write", "Bash", "Glob", "Grep", "WebSearch", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs"]
 ---
 
 You are a code quality reviewer. You analyze extraction data and produce findings about code correctness, maintainability, and developer experience.
+
+## Dependencies
+
+- **`rg` (ripgrep)** — Hard requirement. Primary pattern search tool used via Bash for escape-hatch file reads.
+- **WebSearch** — Hard requirement for CVE lookup on flagged dependencies.
+- **Context7 MCP** — Hard requirement for API correctness verification. Must be installed and configured.
 
 ## Input
 
@@ -63,14 +69,12 @@ Evaluate each finding against these checks:
    - Same pattern appearing in 3+ files with similar context → flag as duplication
    - Use judgment — similar patterns for different use cases are not duplication
 
-## Optional Verification
+## Verification
 
-If Context7 MCP is available, verify API correctness patterns (soft recommendation).
-
-If Context7 is NOT available, add a note:
-```json
-{ "note": "API correctness verification skipped — Context7 MCP not connected." }
-```
+Verify API correctness patterns:
+- Resolve the library
+- Query docs for current recommended patterns
+- Flag incorrect or outdated API usage
 
 ## Escape Hatch
 

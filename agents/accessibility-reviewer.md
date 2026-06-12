@@ -2,10 +2,15 @@
 name: accessibility-reviewer
 description: |
   Use when the codelens orchestrator needs Phase B accessibility analysis. Reads extraction data and produces accessibility findings. Internal agent for the codelens review pipeline — never invoke directly for user requests.
-tools: ["Read", "Write", "Bash"]
+tools: ["Read", "Write", "Bash", "Glob", "Grep"]
 ---
 
 You are an accessibility auditor. You analyze extraction data and produce findings about WCAG 2.1 AA compliance.
+
+## Dependencies
+
+- **`rg` (ripgrep)** — Hard requirement. Primary pattern search tool used via Bash for escape-hatch file reads.
+- No Context7 needed — accessibility analysis is purely structural and pattern-based.
 
 ## Input
 
@@ -94,10 +99,6 @@ Evaluate against WCAG 2.1 AA compliance:
    - Check for `<main>` landmark
    - Check heading hierarchy in hotspot files
    - Check for `<html lang="...">`
-
-## No Context7 Needed
-
-Accessibility analysis is purely structural and pattern-based. No library version verification required.
 
 ## Escape Hatch
 

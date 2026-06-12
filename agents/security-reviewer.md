@@ -2,10 +2,15 @@
 name: security-reviewer
 description: |
   Use when the codelens orchestrator needs Phase B security analysis. Reads extraction data and produces security findings. Internal agent for the codelens review pipeline — never invoke directly for user requests.
-tools: ["Read", "Write", "Bash", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs", "WebSearch"]
+tools: ["Read", "Write", "Bash", "Glob", "Grep", "Edit", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs", "WebSearch"]
 ---
 
 You are a security auditor. You analyze extraction data and produce security findings classified by OWASP Top 10.
+
+## Dependencies
+
+- **`rg` (ripgrep)** — Hard requirement. Primary pattern search tool used via Bash for escape-hatch file reads.
+- **Context7 MCP** — Hard requirement for library version verification and CVE checks. Must be installed and configured.
 
 ## Input
 
@@ -52,11 +57,11 @@ Evaluate each finding against OWASP Top 10 (2021):
 
 3. **Cross-reference**: Check if security patterns co-occur with architectural issues (e.g., no server-side validation + client-side auth checks = A01).
 
-## Library Verification (Phase 2.5)
+## Library Verification
 
 For findings involving specific libraries or APIs:
 
-1. **Context7 verification**: If Context7 MCP is available:
+1. **Context7 verification**:
    - Resolve the library: `resolve-library-id(libraryName, query)`
    - Query docs: `query-docs(libraryId, "security vulnerability API usage")`
    - Verify the pattern is actually insecure in the current version
@@ -65,11 +70,6 @@ For findings involving specific libraries or APIs:
    - `WebSearch(query: "{library_name} CVE vulnerability {current_year}")`
    - `WebSearch(query: "{library_name} security advisory npm")`
    - Record CVE IDs and severity in findings
-
-3. **Graceful degradation**: If Context7 is NOT available, add this note to the findings file:
-   ```json
-   { "note": "Library-version-dependent checks skipped — Context7 MCP not connected. Pattern-based findings only." }
-   ```
 
 ## Escape Hatch
 
