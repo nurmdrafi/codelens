@@ -16,3 +16,6 @@ Thumbs.db
 
 # Dependencies
 node_modules/
+
+# Internal documentation
+docs/

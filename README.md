@@ -348,10 +348,3 @@ PRs welcome! Especially for:
 ## License
 
 [MIT](LICENSE) © 2026 nurmdrafi
-
-## Roadmap
-
-- **Delta reports** (`/review all --since-last`) — compare against previous run
-- **GitHub Action** — run `pr-check` automatically on every PR
-- **Additional domains** — performance, i18n, SEO
-- **Config file** — `.codelensrc.json` for project-specific overrides
