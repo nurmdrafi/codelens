@@ -45,7 +45,7 @@ For each requested domain, invoke the corresponding agent:
 | security | `security-reviewer` |
 | architecture | `architecture-reviewer` |
 | code-quality | `code-quality-reviewer` |
-| accessibility | `accessibility-reviewer` |
+| accessibility | `a11y-reviewer` |
 
 Each agent reads `.claude-review/extraction.json` and writes `.claude-review/findings/<domain>.json`.
 

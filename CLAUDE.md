@@ -7,7 +7,7 @@ codelens is an open-source Claude Code plugin for multi-domain code review. It s
 ## Origin
 
 This project evolved through three stages:
-1. **4 separate agents** — `security-auditor`, `architect-reviewer`, `code-reviewer`, `accessibility-reviewer` (see `references/` for originals)
+1. **4 separate agents** — `security-auditor`, `architect-reviewer`, `code-reviewer`, `a11y-reviewer` (see `references/` for originals)
 2. **Merged into one** — `full-codebase-reviewer.md` combined all four into a single monolithic agent
 3. **Decomposed into pipeline** — current architecture: 3-phase pipeline with 6 agents + 1 skill
 
@@ -27,7 +27,7 @@ Phase A: codelens-scanner (single-pass extraction)
   → writes .claude-review/extraction.json
 
 Phase B: 4 domain reviewers (parallel, read extraction.json only)
-  → security-reviewer, architecture-reviewer, code-quality-reviewer, accessibility-reviewer
+  → security-reviewer, architecture-reviewer, code-quality-reviewer, a11y-reviewer
   → each writes .claude-review/findings/<domain>.json
 
 Phase C: codelens-reviewer (orchestrator)
@@ -67,7 +67,7 @@ agents/
   security-reviewer.md     # Phase B: OWASP Top 10
   architecture-reviewer.md # Phase B: SOLID, patterns, dependencies
   code-quality-reviewer.md # Phase B: complexity, duplication, async
-  accessibility-reviewer.md# Phase B: WCAG 2.1 AA
+  a11y-reviewer.md# Phase B: WCAG 2.1 AA
 .claude/
   review-presets.json      # Default presets (pr-check, a11y-audit, full-audit)
 examples/

@@ -1,5 +1,5 @@
 ---
-name: accessibility-reviewer
+name: a11y-reviewer
 description: |
   Use when the codelens orchestrator needs Phase B accessibility analysis. Reads extraction data and produces accessibility findings. Internal agent for the codelens review pipeline — never invoke directly for user requests.
 tools: ["Read", "Write", "Bash", "Glob", "Grep"]
@@ -111,7 +111,7 @@ Write `.claude-review/findings/accessibility.json`:
 ```json
 {
   "domain": "accessibility",
-  "agent": "accessibility-reviewer",
+  "agent": "a11y-reviewer",
   "findings": [
     {
       "domain": "accessibility",

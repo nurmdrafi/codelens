@@ -37,7 +37,7 @@ Even with linters and CI checks, significant issues evade detection because they
 | `security-reviewer` | B | OWASP Top 10 analysis with Context7 CVE checks | `agents/security-reviewer.md` |
 | `architecture-reviewer` | B | SOLID compliance, dependency direction, pattern verification | `agents/architecture-reviewer.md` |
 | `code-quality-reviewer` | B | Complexity, duplication, error handling, async patterns | `agents/code-quality-reviewer.md` |
-| `accessibility-reviewer` | B | WCAG 2.1 AA: keyboard nav, screen readers, ARIA, forms | `agents/accessibility-reviewer.md` |
+| `a11y-reviewer` | B | WCAG 2.1 AA: keyboard nav, screen readers, ARIA, forms | `agents/a11y-reviewer.md` |
 | `codelens-reviewer` | C | Orchestrator: dispatch, dedup, compile report | `agents/codelens-reviewer.md` |
 
 ## Documentation
@@ -345,7 +345,7 @@ codelens/
 │   ├── security-reviewer.md   # Phase B: OWASP Top 10
 │   ├── architecture-reviewer.md   # Phase B: SOLID + patterns
 │   ├── code-quality-reviewer.md   # Phase B: complexity, duplication
-│   └── accessibility-reviewer.md  # Phase B: WCAG 2.1 AA
+│   └── a11y-reviewer.md  # Phase B: WCAG 2.1 AA
 ├── .claude/
 │   └── review-presets.json    # Default presets
 ├── examples/
@@ -364,7 +364,7 @@ Each domain agent is a markdown file in `agents/`. Edit the criteria section to 
 - `agents/security-reviewer.md` — OWASP classification, severity rules
 - `agents/architecture-reviewer.md` — SOLID, patterns, state management
 - `agents/code-quality-reviewer.md` — complexity, duplication, async
-- `agents/accessibility-reviewer.md` — WCAG 2.1 AA, keyboard, ARIA
+- `agents/a11y-reviewer.md` — WCAG 2.1 AA, keyboard, ARIA
 
 ### Report Format
 The report template is in `skills/review/SKILL.md`. Modify sections, severity names, or output format.
