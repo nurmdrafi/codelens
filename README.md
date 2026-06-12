@@ -63,17 +63,20 @@ Requires [Claude Code](https://claude.ai/code) CLI, desktop app, or IDE extensio
 ## Quick Start
 
 ```bash
-# Guided mode — walks you through domain and scope selection
-/review
+# Full review — all four domains, entire codebase
+/codelens:review
 
-# Full audit — all four domains, entire codebase
-/review all
+# Security-only review
+/codelens:review-security
 
 # PR review — security + code quality on your unmerged changes
-/review pr-check
+/codelens:review-pr
+
+# Setup check + list all commands
+/codelens:help
 ```
 
-After scanning, codelens writes a `CODEBASE_ANALYSIS_REPORT.md` (or `PR_REVIEW_<range>.md` for diffs) at your project root with findings organized by severity.
+After scanning, codelens writes a domain-specific report (`SECURITY_REPORT.md`, `ARCHITECTURE_REPORT.md`, `CODE_QUALITY_REPORT.md`, `ACCESSIBILITY_REPORT.md`) for standalone runs, `CODEBASE_ANALYSIS_REPORT.md` for full reviews, or `PR_REVIEW_<range>.md` for PR reviews — all at your project root with findings organized by severity.
 
 ## Required Setup
 
@@ -119,7 +122,7 @@ Source: [github.com/mksglu/context-mode](https://github.com/mksglu/context-mode)
 ### Verify installation
 
 ```
-/review setup-check
+/codelens:help
 ```
 
 This prints a checklist showing which tools are connected and install commands for any missing ones.
@@ -150,35 +153,37 @@ npm install --global @ast-grep/cli
 brew install ast-grep
 ```
 
-## Command Reference
+## Commands
 
-| Command | Domains | Scope |
-|---------|---------|-------|
-| `/review` | Guided prompt | Guided prompt |
-| `/review all` | All four | Full repo |
-| `/review security` | Security only | Full repo |
-| `/review architecture` | Architecture only | Full repo |
-| `/review code-quality` | Code quality only | Full repo |
-| `/review accessibility` (or `a11y`) | Accessibility only | Full repo |
-| `/review security,architecture` | Custom combination | Full repo |
-| `/review all src/lib/payments` | All four | Specific path |
-| `/review security diff:main..HEAD` | Security only | Git diff |
-| `/review pr-check` | Security + code quality | Diff vs default branch |
-| `/review a11y-audit` | Accessibility | Full repo |
-| `/review full-audit` | All four | Full repo |
-| `/review setup-check` | — | Diagnostic |
-| `/review help` | — | Usage cheatsheet |
+| Command | Purpose |
+|---|---|
+| `/codelens:review` | Full multi-domain review (security + architecture + quality + a11y) |
+| `/codelens:review-security` | Security-only review |
+| `/codelens:review-architecture` | Architecture-only review |
+| `/codelens:review-quality` | Code quality-only review |
+| `/codelens:review-a11y` | Accessibility-only review |
+| `/codelens:review-pr` | PR diff review |
+| `/codelens:help` | Setup check + command list |
 
-### Diff Scope
+**Coming soon:** `/codelens:fix-*` for automated remediation.
 
-`diff:<range>` scans only changed files:
-- `diff:main..HEAD` — all unmerged changes
-- `diff:abc123..def456` — specific commit range
-- `diff:` (no range) — auto-detects current branch vs default branch
+### Path Scope
+
+Any review command accepts a path:
+- `/codelens:review src/lib/payments` — full review scoped to a path
+- `/codelens:review-security src/auth` — security review of one module
+
+### Diff Scope (PR review)
+
+`/codelens:review-pr` scans only changed files:
+- `/codelens:review-pr` — defaults to `main...HEAD` using `pr-check` preset (security + code-quality)
+- `/codelens:review-pr main..HEAD` — explicit range
+- `/codelens:review-pr abc123..def456` — specific commit range
+- `/codelens:review-pr <preset>` — use a preset from `.claude/review-presets.json`
 
 ### Presets
 
-Presets define domain + scope combinations. Built-in presets:
+Presets define domain + scope combinations for `/codelens:review-pr`. Built-in presets:
 
 | Preset | Domains | Scope |
 |--------|---------|-------|
@@ -221,11 +226,11 @@ codelens uses a **3-phase pipeline** designed to minimize token cost:
 - **ast-grep** for structural AST patterns (imports, class declarations, empty catch blocks, eval calls) — supports 20+ languages
 - **fallow** for TS/JS dead-code and duplication analysis (unused exports, circular deps, clone families)
 
-For the top 10-15 largest files (complexity hotspots), it extracts structural data: function lists, JSX elements, imports, security signals. Everything is written to `.claude-review/extraction.json`.
+For the top 10-15 largest files (complexity hotspots), it extracts structural data: function lists, JSX elements, imports, security signals. Everything is written to `.codelens-review/extraction.json`.
 
-**Phase B — Domain Analysis:** Each domain reviewer reads only the extraction data — never your source files directly. Security uses Context7 to verify library versions and check for known CVEs. Architecture verifies patterns against current best practices. All findings are written to `.claude-review/findings/<domain>.json`.
+**Phase B — Domain Analysis:** Each domain reviewer reads only the extraction data — never your source files directly. Security uses Context7 to verify library versions and check for known CVEs. Architecture verifies patterns against current best practices. All findings are written to `.codelens-review/findings/<domain>.json`.
 
-**Phase C — Merge & Report:** The orchestrator reads all findings, deduplicates cross-domain issues (same file:line merged into a single row), sorts by severity, and compiles the final report. Working files are cleaned up automatically.
+**Phase C — Merge & Report:** The orchestrator reads all findings, deduplicates cross-domain issues (same file:line merged into a single row), sorts by severity, and compiles the final report. Raw findings are kept in `.codelens-review/`; the orchestrator compiles the final Markdown report from JSON using the shared template at `skills/_shared/report-template.md`.
 
 Files are read **at most once** — the extraction data is shared across all domain reviewers, avoiding the 4x token cost of independent scanning.
 
@@ -290,17 +295,17 @@ Security, architecture, and code-quality reviewers need Context7 for library ver
 
 ### Review produces no findings
 - Verify the scan path contains source files (not just config/data files)
-- Run `/review all` for a full scan instead of a single domain
+- Run `/codelens:review` for a full scan instead of a single domain
 - Check that the path scope matches actual file locations
 
 ### Too many false positives
-- Use `/review security src/specific-path` to narrow scope
+- Use `/codelens:review-security src/specific-path` to narrow scope
 - Edit domain agent files in `agents/` to remove patterns that don't apply to your stack
 - Create a `.claude/review-presets.json` with domains relevant to your project
 
 ### Review is slow on large repos
-- Use path scope: `/review all src/module` instead of scanning the whole repo
-- Use diff scope for PRs: `/review pr-check` only scans changed files
+- Use path scope: `/codelens:review src/module` instead of scanning the whole repo
+- Use diff scope for PRs: `/codelens:review-pr` only scans changed files
 - The single-pass pipeline already minimizes token cost — large repos simply take longer
 
 ### "fallow not found" or missing dead-code findings
@@ -324,7 +329,7 @@ Not yet — this is planned. The current design requires an interactive Claude C
 Edit the relevant domain agent in `agents/` to remove or adjust the pattern that triggered the false positive. Each agent's criteria section lists all checks — comment out or modify the ones that don't apply to your stack.
 
 **What about large monorepos?**
-Use path scope to scan specific packages: `/review all packages/auth`. The single-pass scanner handles large file counts efficiently, but scanning an entire monorepo at once consumes more tokens.
+Use path scope to scan specific packages: `/codelens:review packages/auth`. The single-pass scanner handles large file counts efficiently, but scanning an entire monorepo at once consumes more tokens.
 
 **Can I add custom domains?**
 Yes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the process: create a new agent file, add patterns to the scanner, register in the orchestrator's dispatch table, and add to the skill's command parsing.
@@ -334,20 +339,36 @@ Yes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the process: create a new agent 
 ```
 codelens/
 ├── .claude-plugin/
-│   ├── plugin.json            # Plugin manifest
+│   ├── plugin.json            # Plugin manifest (v1.4.0+)
 │   └── marketplace.json       # Marketplace listing
 ├── skills/
-│   └── review/
-│       └── SKILL.md           # /review command logic + report template
+│   ├── review/
+│   │   └── SKILL.md           # /codelens:review (full review)
+│   ├── review-security/
+│   │   └── SKILL.md           # /codelens:review-security
+│   ├── review-architecture/
+│   │   └── SKILL.md           # /codelens:review-architecture
+│   ├── review-quality/
+│   │   └── SKILL.md           # /codelens:review-quality
+│   ├── review-a11y/
+│   │   └── SKILL.md           # /codelens:review-a11y
+│   ├── review-pr/
+│   │   └── SKILL.md           # /codelens:review-pr
+│   ├── help/
+│   │   └── SKILL.md           # /codelens:help
+│   └── _shared/
+│       ├── report-template.md # Single source of truth for report format
+│       └── setup-check.md     # Shared setup verification
 ├── agents/
 │   ├── codelens-scanner.md    # Phase A: single-pass extractor
 │   ├── codelens-reviewer.md   # Orchestrator: Phase C + dispatch
 │   ├── security-reviewer.md   # Phase B: OWASP Top 10
 │   ├── architecture-reviewer.md   # Phase B: SOLID + patterns
 │   ├── code-quality-reviewer.md   # Phase B: complexity, duplication
-│   └── a11y-reviewer.md  # Phase B: WCAG 2.1 AA
+│   └── a11y-reviewer.md       # Phase B: WCAG 2.1 AA
 ├── .claude/
-│   └── review-presets.json    # Default presets
+│   ├── review-presets.json    # Default presets
+│   └── codelens-exclusions.json # Exclusion patterns (defaults + byDomain + keepInScope)
 ├── examples/
 │   └── sample-report.md       # Anonymized real report
 ├── CLAUDE.md                  # Project instructions for Claude Code
@@ -367,7 +388,7 @@ Each domain agent is a markdown file in `agents/`. Edit the criteria section to 
 - `agents/a11y-reviewer.md` — WCAG 2.1 AA, keyboard, ARIA
 
 ### Report Format
-The report template is in `skills/review/SKILL.md`. Modify sections, severity names, or output format.
+The report template is in `skills/_shared/report-template.md`. Modify sections, severity names, or output format.
 
 ## Contributing
 
