@@ -134,8 +134,7 @@ Copy `agents/` and `skills/` into a test project's `.claude/` dir, then run `/re
 1. Update the version header in `CHANGELOG.md` (e.g., add `## [1.2.0] - YYYY-MM-DD`)
 2. Commit: `git commit -m "chore: bump version to X.Y.Z"`
 3. Push: `git push origin main`
-4. Tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
-5. The GitHub Actions workflow (`.github/workflows/release.yml`) triggers on `v*` tag push, extracts the version + release notes from CHANGELOG.md, and creates a GitHub Release
+4. The GitHub Actions workflow (`.github/workflows/release.yml`) triggers on push to `main`, extracts the version + release notes from CHANGELOG.md, and creates a GitHub Release
 
 No Docker, no secrets beyond the auto-provided `GITHUB_TOKEN`. The workflow reads CHANGELOG.md for release content — keep changelog entries well-formatted.
 
