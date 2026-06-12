@@ -1,0 +1,23 @@
+{
+  "name": "codelens",
+  "version": "1.0.0",
+  "description": "Configurable multi-domain code review for Claude Code: security, architecture, code quality, and accessibility — on your full repo, a module, or a PR diff.",
+  "author": {
+    "name": "nurmdrafi",
+    "url": "https://github.com/nurmdrafi"
+  },
+  "homepage": "https://github.com/nurmdrafi/codelens",
+  "repository": "https://github.com/nurmdrafi/codelens",
+  "license": "MIT",
+  "keywords": [
+    "code-review",
+    "security",
+    "accessibility",
+    "architecture",
+    "code-quality",
+    "owasp",
+    "wcag",
+    "audit"
+  ],
+  "skills": "./skills/"
+}

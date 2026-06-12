@@ -1,0 +1,31 @@
+{
+  "name": "codelens",
+  "owner": {
+    "name": "nurmdrafi",
+    "url": "https://github.com/nurmdrafi"
+  },
+  "metadata": {
+    "description": "Multi-domain code review plugin for Claude Code",
+    "version": "1.0.0",
+    "license": "MIT"
+  },
+  "plugins": [
+    {
+      "name": "codelens",
+      "source": "./",
+      "description": "Configurable multi-domain code review: security, architecture, code quality, accessibility",
+      "version": "1.0.0",
+      "author": {
+        "name": "nurmdrafi"
+      },
+      "category": "development",
+      "keywords": [
+        "code-review",
+        "security",
+        "accessibility",
+        "architecture",
+        "code-quality"
+      ]
+    }
+  ]
+}
