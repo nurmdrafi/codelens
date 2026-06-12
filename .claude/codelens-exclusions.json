@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft-2020-12/schema",
   "comment": "Exclusion patterns applied by every codelens agent (scanner + Phase B reviewers). Edit this file to override per-project. Patterns apply to all search calls via rg -g '!<pattern>' flags. keepInScope rules override defaults if a broad glob accidentally matches.",
   "defaults": [
     "node_modules", ".pnpm-store", ".yarn", ".yarn-cache", ".yarn-unplugged",
