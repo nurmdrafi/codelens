@@ -31,8 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Scanner self-exclusion.** Scanner no longer analyzes its own working directory (`.codelens-review/`) or previous reports (`*_REPORT.md`, `PR_REVIEW_*.md`) from earlier runs. Fixes UAT-01 finding where the scanner re-analyzed its own output.
-- **OWASP mis-tags from UAT-01.** `console.log` leaks no longer tagged A09. Race conditions no longer tagged A01. Payment-data findings tagged with primary OWASP category, PCI DSS in impact field.
-- **Overlapping findings consolidated.** UAT-01's SEC-001/005/006 overlap on `paymentApi.ts` query-param pattern now covered by the dedup rule.
 
 ## [1.3.0] - 2026-06-12
 
