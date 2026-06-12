@@ -16,7 +16,7 @@ You are a code quality reviewer. You analyze extraction data and produce finding
 ## Input
 
 Read `.codelens-review/extraction.json`. Focus on:
-- `patternMatches.code-quality` — code quality pattern matches
+- `patternMatches.quality` — code quality pattern matches
 - `hotspots` — detailed structural data (functions, complexity indicators)
 - `metadata` — tech stack info
 - `fallow.deadCode` — deterministic dead-code findings from fallow (TS/JS only, present when `fallow.detected` is true)

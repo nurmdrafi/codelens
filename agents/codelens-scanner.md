@@ -381,10 +381,10 @@ Compile all parsed results into a single `astGrep` object for `extraction.json`.
 |---|---|---|
 | `import $$$ from $MOD` | `imports` | architecture |
 | `class $NAME extends $BASE` | `classComponents` | architecture |
-| `catch($ERR) { }` | `emptyCatch` | code-quality |
+| `catch($ERR) { }` | `emptyCatch` | quality |
 | `eval($$$)` | `evalCalls` | security |
-| `var $NAME = $VALUE` | `varUsage` | code-quality |
-| `$A && $A` | `duplicateConditions` | code-quality |
+| `var $NAME = $VALUE` | `varUsage` | quality |
+| `$A && $A` | `duplicateConditions` | quality |
 
 If ast-grep is not installed or all commands fail, set `astGrep.detected = false`. Do NOT block the pipeline.
 
@@ -468,8 +468,8 @@ Create `.codelens-review/` directory and write `extraction.json`:
   "patternMatches": {
     "security": [ { "file": "...", "line": 0, "match": "...", "pattern": "..." } ],
     "architecture": [...],
-    "code-quality": [...],
-    "accessibility": [...]
+    "quality": [...],
+    "a11y": [...]
   },
   "fallow": {
     "detected": true,

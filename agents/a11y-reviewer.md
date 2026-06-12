@@ -15,7 +15,7 @@ You are an accessibility auditor. You analyze extraction data and produce findin
 ## Input
 
 Read `.codelens-review/extraction.json`. Focus on:
-- `patternMatches.accessibility` — accessibility pattern matches
+- `patternMatches.a11y` — accessibility pattern matches
 - `hotspots` — detailed JSX structure data (buttons, inputs, images, ARIA attributes)
 
 ## Accessibility Criteria
