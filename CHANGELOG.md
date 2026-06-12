@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-12
+
+### Fixed
+- MCP dependencies (Context7, context-mode) hardened to required — removed all optional/fallback language from agents
+- Added missing tools to agent frontmatter: `Glob`, `Grep`, `Edit`, `WebSearch`, Context7 MCP tools, `ctx_fetch_and_index`
+- Added explicit Dependencies sections to all 6 agents listing `rg`, context-mode, and Context7 as hard requirements
+- README dependency section corrected from "Recommended Setup" (optional) to "Required Setup" (mandatory)
+
+### Added
+- `CLAUDE.md` — full project documentation for Claude Code (identity, origin, architecture, constraints, workflows)
+- `CONTRIBUTING.md` — development prerequisites, branching strategy, commit conventions, testing guide
+- `LICENSE` — MIT license
+- `examples/sample-report.md` — anonymized real report (62 findings) for README preview
+- GitHub Actions release workflow (`.github/workflows/release.yml`) — tag-triggered, extracts version + notes from CHANGELOG.md
+
+### Changed
+- README restructured with Problem/Solution framing, agent inventory table, docs hub, report preview, troubleshooting (6 issues), FAQ (6 questions)
+- CONTRIBUTING expanded with prerequisites table, edge case testing, false-positive/missing-pattern reporting templates
+
 ## [1.0.0] - 2026-06-12
 
 ### Added

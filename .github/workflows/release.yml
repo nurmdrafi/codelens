@@ -1,0 +1,74 @@
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Extract Changelog & Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from CHANGELOG.md
+        id: version
+        run: |
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "ERROR: CHANGELOG.md not found"
+            exit 1
+          fi
+
+          CHANGELOG_LINE=$(grep '^## \[' CHANGELOG.md | head -1)
+          if [ -z "$CHANGELOG_LINE" ]; then
+            echo "ERROR: No version entry found in CHANGELOG.md"
+            exit 1
+          fi
+
+          VERSION=$(echo "$CHANGELOG_LINE" | cut -d'[' -f2 | cut -d']' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+          if ! echo "$VERSION" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' > /dev/null; then
+            echo "ERROR: Version '$VERSION' doesn't match semver (x.y.z)"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Extract release notes from CHANGELOG.md
+        id: release-notes
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          ESCAPED_VERSION=$(echo "$VERSION" | sed 's/\./\\./g')
+          NOTES=$(awk "/^## \\[${ESCAPED_VERSION}\\]/{flag=1; next} /^## \\[/{if(flag) exit} flag" CHANGELOG.md)
+
+          if [ -z "$NOTES" ]; then
+            echo "WARNING: No release notes found for version $VERSION"
+            NOTES="See CHANGELOG.md for details."
+          fi
+
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body: |
+            ## What's Changed
+
+            ${{ steps.release-notes.outputs.notes }}
+
+            ---
+
+            **Install:** `/plugin marketplace add nurmdrafi/codelens` then `/plugin install codelens`
+          draft: false
+          prerelease: false
+          generate_release_notes: false
