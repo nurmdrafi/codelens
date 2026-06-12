@@ -33,7 +33,7 @@ You receive a configuration object from the `/review` skill:
 ## Phase A: Dispatch Scanner
 
 1. Invoke the `codelens-scanner` agent with the scope configuration.
-2. Wait for `.claude-review/extraction.json` to be written.
+2. Wait for `.codelens-review/extraction.json` to be written.
 3. Post progress update: `"Phase A: scanned [N] files ✅"`
 
 ## Phase B: Dispatch Domain Reviewers
@@ -47,7 +47,7 @@ For each requested domain, invoke the corresponding agent:
 | code-quality | `code-quality-reviewer` |
 | accessibility | `a11y-reviewer` |
 
-Each agent reads `.claude-review/extraction.json` and writes `.claude-review/findings/<domain>.json`.
+Each agent reads `.codelens-review/extraction.json` and writes `.codelens-review/findings/<domain>.json`.
 
 Post progress after each domain completes:
 ```
@@ -58,7 +58,7 @@ Post progress after each domain completes:
 
 ### 1. Read All Findings
 
-Read each `.claude-review/findings/<domain>.json` file. Combine all findings into a single array.
+Read each `.codelens-review/findings/<domain>.json` file. Combine all findings into a single array.
 
 ### 2. Cross-Domain Deduplication
 
@@ -77,10 +77,20 @@ Within each severity level, order by domain (security first, then architecture, 
 
 ### 4. Generate Report
 
-Write the report using the native Write tool. Use the report format template from the `/review` skill:
+Write the report using the native Write tool. Apply the shared report format template from `skills/_shared/report-template.md` (see Markdown compilation below for details).
 
-**Full/scope report:** `CODEBASE_ANALYSIS_REPORT.md` at project root
-**Diff/PR report:** `PR_REVIEW_<range-sanitized>.md` at project root
+## Output Filename Selection
+
+| Run mode | Report path | Source JSON |
+|---|---|---|
+| Single-domain security | `SECURITY_REPORT.md` | `.codelens-review/findings/security.json` |
+| Single-domain architecture | `ARCHITECTURE_REPORT.md` | `.codelens-review/findings/architecture.json` |
+| Single-domain quality | `CODE_QUALITY_REPORT.md` | `.codelens-review/findings/quality.json` |
+| Single-domain a11y | `ACCESSIBILITY_REPORT.md` | `.codelens-review/findings/a11y.json` |
+| Full review | `CODEBASE_ANALYSIS_REPORT.md` | All four domain JSONs |
+| PR review | `PR_REVIEW_<commit-range>.md` | All four domain JSONs |
+
+Reports go to repo root (user-facing). JSONs stay in `.codelens-review/findings/` (intermediate).
 
 The report MUST include these sections:
 1. **Header** — project name, date, tech stack, domains, scope
@@ -107,9 +117,34 @@ Want me to:
 3. Leave the report as-is
 ```
 
-### 6. Cleanup
+### Final step: Compile methodology table
 
-Remove `.claude-review/` working directory after successful compilation.
+Read from each domain JSON's `_methodology` field (set by each agent) and from the orchestrator's own run. Compile this section at the bottom of every report:
+
+```
+## Methodology
+
+| Step | Tool | Notes |
+|------|------|-------|
+| Extraction read | Read | .codelens-review/extraction.json |
+| Pattern searches | ctx_batch_execute | context-mode |
+| File deep-reads | ctx_execute_file | context-mode |
+| Library/CVE checks | Context7 | MCP |
+| Fallback searches | rg via Bash | used only if context-mode unavailable |
+| Total tokens | <count> | (target ~25k single-domain) |
+| Context-mode status | available / unavailable | detection result |
+| Exclusions applied | <count> | from .claude/codelens-exclusions.json |
+```
+
+If context-mode was unavailable, the Fallback row shows: `rg via Bash (fallback — context-mode unavailable)`.
+
+### Markdown compilation
+
+Compile the final Markdown report by applying `skills/_shared/report-template.md` to the merged JSON findings. The orchestrator does this — agents never write Markdown directly.
+
+### 6. Post-Report Note
+
+Raw findings kept in `.codelens-review/`. Re-running overwrites; delete manually if you want a clean slate.
 
 ## Progress Updates
 
