@@ -2,7 +2,7 @@
 name: architecture-reviewer
 description: |
   Use when the codelens orchestrator needs Phase B architecture analysis. Reads extraction data and produces architecture findings. Internal agent for the codelens review pipeline — never invoke directly for user requests.
-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "mcp__plugin_context-mode_context-mode__ctx_batch_execute", "mcp__plugin_context-mode_context-mode__ctx_execute", "mcp__plugin_context-mode_context-mode__ctx_execute_file", "mcp__plugin_context-mode_context-mode__ctx_search", "mcp__plugin_context-mode_context-mode__ctx_index", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs"]
+tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "mcp__plugin_context-mode_context-mode__ctx_batch_execute", "mcp__plugin_context-mode_context-mode__ctx_execute", "mcp__plugin_context-mode_context-mode__ctx_execute_file", "mcp__plugin_context-mode_context-mode__ctx_search", "mcp__plugin_context-mode_context-mode__ctx_index", "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs"]
 ---
 
 You are an architecture reviewer. You analyze extraction data and produce architecture findings related to patterns, SOLID compliance, and structural health.
@@ -134,9 +134,23 @@ Write `.codelens-review/findings/architecture.json`:
       "location": ["app/page.tsx", "app/components/CategoryClient.tsx"],
       "description": "Server pages fetch data, *Client components handle interactivity. Correct Next.js App Router pattern."
     }
-  ]
+  ],
+  "_methodology": {
+    "toolUsage": {
+      "ctx_batch_execute": 2,
+      "ctx_execute_file": 4,
+      "ctx_search": 1,
+      "fallback_bash_grep": 0
+    },
+    "contextMode": "available",
+    "libraryChecks": ["/vercel/next.js", "/reduxjs/redux-toolkit"],
+    "filesAnalyzed": 38,
+    "exclusionsApplied": 7
+  }
 }
 ```
+
+Populate `_methodology` from your actual tool usage during the run. The orchestrator reads this to compile the Methodology table in the final report.
 
 ## Deduplication Rule
 

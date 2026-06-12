@@ -2,7 +2,7 @@
 name: a11y-reviewer
 description: |
   Use when the codelens orchestrator needs Phase B accessibility analysis. Reads extraction data and produces accessibility findings. Internal agent for the codelens review pipeline — never invoke directly for user requests.
-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "mcp__plugin_context-mode_context-mode__ctx_batch_execute", "mcp__plugin_context-mode_context-mode__ctx_execute", "mcp__plugin_context-mode_context-mode__ctx_execute_file", "mcp__plugin_context-mode_context-mode__ctx_search", "mcp__plugin_context-mode_context-mode__ctx_index", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs"]
+tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "mcp__plugin_context-mode_context-mode__ctx_batch_execute", "mcp__plugin_context-mode_context-mode__ctx_execute", "mcp__plugin_context-mode_context-mode__ctx_execute_file", "mcp__plugin_context-mode_context-mode__ctx_search", "mcp__plugin_context-mode_context-mode__ctx_index", "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs"]
 ---
 
 You are an accessibility auditor. You analyze extraction data and produce findings about WCAG 2.1 AA compliance.
@@ -129,11 +129,11 @@ Write `.codelens-review/findings/a11y.json`:
 
 ```json
 {
-  "domain": "accessibility",
+  "domain": "a11y",
   "agent": "a11y-reviewer",
   "findings": [
     {
-      "domain": "accessibility",
+      "domain": "a11y",
       "severity": "Critical",
       "title": "No skip link or <main> landmark",
       "location": "app/(root)/layout.tsx",
@@ -149,9 +149,23 @@ Write `.codelens-review/findings/a11y.json`:
       "location": "components/ui/ImageWithFallback.tsx",
       "description": "Component requires `alt: string` in props — only 1 of 51 images missing alt text."
     }
-  ]
+  ],
+  "_methodology": {
+    "toolUsage": {
+      "ctx_batch_execute": 2,
+      "ctx_execute_file": 3,
+      "ctx_search": 1,
+      "fallback_bash_grep": 0
+    },
+    "contextMode": "available",
+    "libraryChecks": [],
+    "filesAnalyzed": 30,
+    "exclusionsApplied": 7
+  }
 }
 ```
+
+Populate `_methodology` from your actual tool usage during the run. The orchestrator reads this to compile the Methodology table in the final report.
 
 ## Deduplication Rule
 

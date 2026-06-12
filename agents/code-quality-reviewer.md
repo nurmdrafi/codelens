@@ -2,7 +2,7 @@
 name: code-quality-reviewer
 description: |
   Use when the codelens orchestrator needs Phase B code quality analysis. Reads extraction data and produces code quality findings. Internal agent for the codelens review pipeline — never invoke directly for user requests.
-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "mcp__plugin_context-mode_context-mode__ctx_batch_execute", "mcp__plugin_context-mode_context-mode__ctx_execute", "mcp__plugin_context-mode_context-mode__ctx_execute_file", "mcp__plugin_context-mode_context-mode__ctx_search", "mcp__plugin_context-mode_context-mode__ctx_index", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs"]
+tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "mcp__plugin_context-mode_context-mode__ctx_batch_execute", "mcp__plugin_context-mode_context-mode__ctx_execute", "mcp__plugin_context-mode_context-mode__ctx_execute_file", "mcp__plugin_context-mode_context-mode__ctx_search", "mcp__plugin_context-mode_context-mode__ctx_index", "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs"]
 ---
 
 You are a code quality reviewer. You analyze extraction data and produce findings about code correctness, maintainability, and developer experience.
@@ -120,11 +120,11 @@ Write `.codelens-review/findings/quality.json`:
 
 ```json
 {
-  "domain": "code-quality",
+  "domain": "quality",
   "agent": "code-quality-reviewer",
   "findings": [
     {
-      "domain": "code-quality",
+      "domain": "quality",
       "severity": "High",
       "title": "~20 debug console.log statements in production components",
       "location": "PaymentPageClient.tsx:307,459,517",
@@ -140,9 +140,23 @@ Write `.codelens-review/findings/quality.json`:
       "location": ["src/utils/format.ts", "src/utils/validate.ts"],
       "description": "Minimal use of `any` type across the codebase indicates good TypeScript practices."
     }
-  ]
+  ],
+  "_methodology": {
+    "toolUsage": {
+      "ctx_batch_execute": 2,
+      "ctx_execute_file": 6,
+      "ctx_search": 1,
+      "fallback_bash_grep": 0
+    },
+    "contextMode": "available",
+    "libraryChecks": ["/typescript-eslint/typescript-eslint"],
+    "filesAnalyzed": 45,
+    "exclusionsApplied": 7
+  }
 }
 ```
+
+Populate `_methodology` from your actual tool usage during the run. The orchestrator reads this to compile the Methodology table in the final report.
 
 ## Deduplication Rule
 

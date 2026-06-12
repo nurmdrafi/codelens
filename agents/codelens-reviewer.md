@@ -22,7 +22,7 @@ If any dependency is missing, abort with a clear message: "Missing required depe
 You receive a configuration object from the `/review` skill:
 ```json
 {
-  "domains": ["security", "architecture", "code-quality", "accessibility"],
+  "domains": ["security", "architecture", "quality", "a11y"],
   "scope": "full" | "path" | "diff",
   "scopeTarget": "src/lib",
   "diffRange": "main..HEAD",
@@ -44,8 +44,8 @@ For each requested domain, invoke the corresponding agent:
 |--------|-------|
 | security | `security-reviewer` |
 | architecture | `architecture-reviewer` |
-| code-quality | `code-quality-reviewer` |
-| accessibility | `a11y-reviewer` |
+| quality | `code-quality-reviewer` |
+| a11y | `a11y-reviewer` |
 
 Each agent reads `.codelens-review/extraction.json` and writes `.codelens-review/findings/<domain>.json`.
 

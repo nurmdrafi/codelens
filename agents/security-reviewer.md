@@ -8,6 +8,7 @@ tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch",
         "mcp__plugin_context-mode_context-mode__ctx_execute_file",
         "mcp__plugin_context-mode_context-mode__ctx_search",
         "mcp__plugin_context-mode_context-mode__ctx_index",
+        "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
         "mcp__plugin_context7_context7__resolve-library-id",
         "mcp__plugin_context7_context7__query-docs"]
 ---
@@ -156,11 +157,25 @@ Write `.codelens-review/findings/security.json`:
       "location": "project-wide",
       "description": "No instances of dangerouslySetInnerHTML found — primary XSS vector eliminated."
     }
-  ]
+  ],
+  "_methodology": {
+    "toolUsage": {
+      "ctx_batch_execute": 3,
+      "ctx_execute_file": 5,
+      "ctx_search": 2,
+      "fallback_bash_grep": 0
+    },
+    "contextMode": "available",
+    "libraryChecks": ["/vercel/next.js", "/prisma/prisma"],
+    "filesAnalyzed": 42,
+    "exclusionsApplied": 7
+  }
 }
 ```
 
 Include both `findings` (issues) and `positiveFindings` (good practices observed).
+
+Populate `_methodology` from your actual tool usage during the run. The orchestrator reads this to compile the Methodology table in the final report.
 
 ## Deduplication Rule
 
