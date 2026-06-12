@@ -23,6 +23,7 @@ Markdown-based agents and skills. No build step, no runtime dependencies, no com
 Phase A: codelens-scanner (single-pass extraction)
   → rg pattern scan + hotspot deep-dive
   → fallow dead-code + dupes (TS/JS only, optional)
+  → ast-grep structural scan (20+ languages, optional)
   → writes .claude-review/extraction.json
 
 Phase B: 4 domain reviewers (parallel, read extraction.json only)
@@ -49,6 +50,7 @@ These are NOT optional. All must be installed and configured:
 | Dependency | Used By | Purpose |
 |---|---|---|
 | **`fallow`** | codelens-scanner | TS/JS dead-code and duplication analysis. Auto-detected via `package.json`. Skipped silently for non-TS/JS projects. |
+| **`sg` (ast-grep)** | codelens-scanner | AST-accurate structural code search. Supports 20+ languages. Used for imports, class declarations, empty catch blocks, eval detection. Skipped silently if not installed. |
 
 ## File Map
 

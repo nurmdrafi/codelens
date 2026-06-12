@@ -21,6 +21,9 @@ Read `.claude-review/extraction.json`. Focus on:
 - `metadata` — tech stack info
 - `fallow.deadCode` — deterministic dead-code findings from fallow (TS/JS only, present when `fallow.detected` is true)
 - `fallow.duplication` — clone families and duplication data from fallow (TS/JS only)
+- `astGrep.emptyCatch` — AST-accurate empty catch blocks (present when `astGrep.detected` is true)
+- `astGrep.varUsage` — `var` declarations that should be `let`/`const`
+- `astGrep.duplicateConditions` — duplicate boolean operands (`$A && $A`)
 
 ## Code Quality Criteria
 
@@ -39,6 +42,9 @@ Evaluate each finding against these checks:
 - **Test coverage**: Identify untested critical paths, especially auth, payments, data mutations
 - **Dead code** (fallow): Unused exports, unreachable files, stale dependencies — cross-reference with own pattern matches
 - **Code duplication** (fallow): Clone families, duplicated logic across files — use fallow's deterministic clone detection over heuristic comparison
+- **Empty catch blocks** (ast-grep): AST-accurate detection including multi-line catches — more reliable than regex
+- **var usage** (ast-grep): `var` declarations in modern codebases should be `let`/`const`
+- **Duplicate conditions** (ast-grep): Boolean expressions like `$A && $A` indicate likely bugs
 
 ## Severity Classification
 
@@ -79,6 +85,12 @@ Evaluate each finding against these checks:
    - Use `fallow.duplication.cloneFamilies` for refactoring suggestions with extraction targets
    - Tag all fallow-sourced findings with `"source": "fallow"` for traceability
    - Classify: unused exports as Medium, unused files as High, large clone families as High
+
+7. **ast-grep data processing** (if `astGrep.detected` is true):
+   - `astGrep.emptyCatch` — each empty catch block is a Medium finding (swallowed errors)
+   - `astGrep.varUsage` — each `var` declaration is a Low finding (modernization)
+   - `astGrep.duplicateConditions` — each duplicate condition is a High finding (likely bug)
+   - Tag all ast-grep findings with `"source": "ast-grep"` for traceability
 
 ## Verification
 

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-12
+
+### Added
+- **ast-grep integration** — optional AST-aware structural code search using tree-sitter
+  - Phase A scanner runs `sg` (ast-grep) for patterns that need AST understanding
+  - Supports 20+ languages (TS, JS, Python, Go, Java, Rust, etc.) — not limited to TS/JS
+  - Replaces 4 rg patterns with AST-accurate equivalents (imports, class extends, empty catch, eval)
+  - New checks rg can't do: `var` usage detection, duplicate boolean conditions (`$A && $A`)
+  - Zero false positives on eval — only matches real eval() calls, not strings/comments
+  - JSON output parsed via `ctx_execute_file` sandbox — only ~2-4KB summaries enter context
+  - Phase B code-quality reviewer consumes empty catch, var usage, duplicate conditions
+  - Phase B architecture reviewer consumes AST-accurate imports and class declarations
+  - Phase B security reviewer consumes AST-accurate eval calls
+  - `/review setup-check` shows ast-grep availability (soft check, does not fail if missing)
+
+### Changed
+- Removed 4 patterns from rg combined command (eval, import, class extends, empty catch) — now handled by ast-grep
+- `CLAUDE.md` — added ast-grep to Optional Dependencies, updated architecture diagram
+- `agents/codelens-scanner.md` — added Step 2.6 (ast-grep Structural Scan), updated extraction.json schema
+- `agents/code-quality-reviewer.md` — added ast-grep data to Input, criteria, and analysis process
+- `agents/architecture-reviewer.md` — added ast-grep imports and class data to Input and analysis
+- `agents/security-reviewer.md` — added ast-grep eval data to Input and analysis
+
 ## [1.2.0] - 2026-06-12
 
 ### Added

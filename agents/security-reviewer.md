@@ -18,6 +18,7 @@ Read `.claude-review/extraction.json`. Focus on:
 - `patternMatches.security` — all security-relevant pattern matches
 - `hotspots` — detailed structural data for large/complex files
 - `fallow.deadCode.unlistedDeps` — packages imported in code but missing from package.json (TS/JS only, present when `fallow.detected` is true)
+- `astGrep.evalCalls` — AST-accurate eval() detection with zero false positives (present when `astGrep.detected` is true). Replaces rg-based eval pattern — only real eval() calls in executable code, not strings or comments.
 
 ## Security Criteria
 
@@ -62,6 +63,10 @@ Evaluate each finding against OWASP Top 10 (2021):
    - For each package in `fallow.deadCode.unlistedDeps`, flag as a supply chain risk (OWASP A06 — Vulnerable Components)
    - Packages imported in code but missing from `package.json` may be implicitly installed via transitive dependencies — version is uncontrolled
    - Tag findings with `"source": "fallow"`. Classify as Medium severity.
+
+5. **AST-accurate eval detection** (if `astGrep.detected` is true):
+   - Use `astGrep.evalCalls` instead of rg-based eval matches — no false positives from strings/comments
+   - Tag findings with `"source": "ast-grep"`. Classify eval as High severity (OWASP A03 — Injection).
 
 ## Library Verification
 

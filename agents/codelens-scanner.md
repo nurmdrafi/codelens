@@ -13,6 +13,7 @@ You are a codebase extraction specialist. You scan files ONCE and produce struct
 - **context-mode MCP** — Hard requirement. Provides sandboxed execution (`ctx_execute_file`, `ctx_batch_execute`) to prevent context window flooding during large-scale analysis. Must be installed and configured as an MCP server.
 - **Context7 MCP** — Hard requirement for Phase B agents. Provides library documentation lookup for verifying flagged patterns against current API recommendations.
 - **`fallow`** (optional) — TS/JS codebase intelligence for dead-code and duplication analysis. Auto-detected via `package.json`. Skipped silently for non-TS/JS projects. Uses `npx -y fallow` (auto-installs via npx).
+- **`sg` (ast-grep)** (optional) — Rust-based structural code search using tree-sitter AST. Supports 20+ languages. Used for patterns that need AST understanding (imports, class declarations, empty catch blocks, eval). Skipped silently if not installed. Install: `npm i -g @ast-grep/cli` or `brew install ast-grep`.
 
 ## Input
 
@@ -65,26 +66,28 @@ If context-mode MCP is available, use `ctx_batch_execute` with concurrency 4-8. 
 **Security patterns:**
 - `localStorage\.(getItem|setItem)` — token/secret storage
 - `dangerouslySetInnerHTML` — XSS vector (React)
-- `eval\(` — code injection
 - `innerHTML|outerHTML` — DOM XSS
 - `SECRET|PASSWORD|API_KEY|TOKEN` (case-insensitive, exclude `.env`/`config` matches)
 - `Authorization.*Bearer` — auth header patterns
 
+Note: `eval\(` is handled by ast-grep (Step 2.6) for AST-accurate matching — no false positives from strings/comments.
+
 **Architecture patterns:**
-- `import.*from` — import/dependency count per file
-- `class.*extends.*Component` — class component usage
 - `React\.memo|useMemo|useCallback` — memoization patterns
 - `\.then\(` — promise chains vs async/await
 - `await ` — async patterns
 - `export default` — module exports
 
+Note: `import.*from` and `class.*extends.*Component` are handled by ast-grep (Step 2.6) for AST-accurate matching.
+
 **Code Quality patterns:**
 - `console\.log` — debug logging
 - `TODO|FIXME|HACK|XXX` — tech debt markers
 - `eslint-disable` — lint suppressions
-- `catch\s*\([^)]*\)\s*\{\s*\}` — empty catch blocks
 - `useState` — state hooks count
 - `useEffect` — effect hooks count
+
+Note: Empty catch blocks are handled by ast-grep (Step 2.6) — rg misses multi-line empty catches.
 
 **Accessibility patterns:**
 - `alt=` — alt text usage
@@ -100,12 +103,9 @@ If context-mode MCP is available, use `ctx_batch_execute` with concurrency 4-8. 
 rg --no-heading -n \
   -e 'localStorage\.(getItem|setItem)' \
   -e 'dangerouslySetInnerHTML' \
-  -e 'eval\(' \
   -e 'innerHTML|outerHTML' \
   -i -e 'SECRET|PASSWORD|API_KEY|TOKEN' \
   -e 'Authorization.*Bearer' \
-  -e 'import.*from' \
-  -e 'class.*extends.*Component' \
   -e 'React\.memo|useMemo|useCallback' \
   -e '\.then\(' \
   -e 'await ' \
@@ -113,7 +113,6 @@ rg --no-heading -n \
   -e 'console\.log' \
   -e 'TODO|FIXME|HACK|XXX' \
   -e 'eslint-disable' \
-  -e 'catch\s*\([^)]*\)\s*\{\s*\}' \
   -e 'useState' \
   -e 'useEffect' \
   -e 'alt=' \
@@ -297,6 +296,88 @@ Store the parsed JSON output from both `ctx_execute_file` calls. These will be w
 
 If either fallow command fails (exit code 2, output file missing, or parse error), log a warning and set `fallow.detected = false`. Do NOT block the pipeline.
 
+## Step 2.6: ast-grep Structural Scan
+
+**Only run this step if `sg` (ast-grep) is installed.** Check with `sg --version 2>/dev/null`. If not found, skip silently.
+
+ast-grep provides AST-aware structural search using tree-sitter. It supports 20+ languages (TS, JS, Python, Go, Java, Rust, etc.) and produces JSON output. It handles patterns that ripgrep cannot do accurately due to false positives from strings/comments.
+
+### Run ast-grep commands
+
+Run via `ctx_batch_execute` (or Bash if context-mode unavailable). Each command outputs JSON to stdout:
+
+```bash
+sg run --pattern 'import $$$ from $MOD' --json . 2>/dev/null || true
+sg run --pattern 'class $NAME extends $BASE' --json . 2>/dev/null || true
+sg run --pattern 'catch($ERR) { }' --json . 2>/dev/null || true
+sg run --pattern 'eval($$$)' --json . 2>/dev/null || true
+sg run --pattern 'var $NAME = $VALUE' --json . 2>/dev/null || true
+sg run --pattern '$A && $A' --json . 2>/dev/null || true
+```
+
+**Important:** Always append `|| true`. Save each output to `.claude-review/ast-grep-<pattern>.json`.
+
+### Parse ast-grep output
+
+Each ast-grep JSON output is an array of match objects:
+```json
+[
+  {
+    "text": "import React from 'react'",
+    "range": { "start": { "line": 0, "column": 0 }, "end": { "line": 0, "column": 26 } },
+    "file": "src/App.tsx",
+    "language": "Ts",
+    "lines": "import React from 'react'",
+    "metaVariables": { "single": { "MOD": { "text": "'react'" } } }
+  }
+]
+```
+
+Use `ctx_execute_file` on each output file with this processing code:
+
+```javascript
+const matches = JSON.parse(FILE_CONTENT);
+const result = { count: matches.length, items: [] };
+
+for (const m of matches) {
+  if (result.items.length >= 50) break;
+  const item = {
+    file: m.file,
+    line: m.range.start.line + 1,
+    text: m.lines || m.text,
+    language: m.language
+  };
+  // Extract metaVariables
+  if (m.metaVariables && m.metaVariables.single) {
+    const vars = m.metaVariables.single;
+    if (vars.MOD) item.source = vars.MOD.text.replace(/['"]/g, '');
+    if (vars.NAME) item.name = vars.NAME.text;
+    if (vars.BASE) item.base = vars.BASE.text;
+    if (vars.ERR) item.variable = vars.ERR.text;
+    if (vars.VALUE) item.value = vars.VALUE.text;
+    if (vars.A) item.condition = vars.A.text;
+  }
+  result.items.push(item);
+}
+
+console.log(JSON.stringify(result));
+```
+
+### Store parsed results
+
+Compile all parsed results into a single `astGrep` object for `extraction.json`. Category mapping:
+
+| Pattern | Category | Domain |
+|---|---|---|
+| `import $$$ from $MOD` | `imports` | architecture |
+| `class $NAME extends $BASE` | `classComponents` | architecture |
+| `catch($ERR) { }` | `emptyCatch` | code-quality |
+| `eval($$$)` | `evalCalls` | security |
+| `var $NAME = $VALUE` | `varUsage` | code-quality |
+| `$A && $A` | `duplicateConditions` | code-quality |
+
+If ast-grep is not installed or all commands fail, set `astGrep.detected = false`. Do NOT block the pipeline.
+
 ## Step 3: Hotspot Deep-Dive
 
 For the top 10-15 largest/most-imported files, extract detailed structural information.
@@ -407,6 +488,33 @@ Create `.claude-review/` directory and write `extraction.json`:
       "cloneFamilies": [
         { "groups": 2, "lines": 384, "files": ["page.tsx", "Client.tsx"], "suggestion": "Extract into shared directory" }
       ]
+    }
+  },
+  "astGrep": {
+    "detected": true,
+    "imports": {
+      "count": 142,
+      "items": [ { "file": "src/App.tsx", "line": 5, "source": "react", "language": "Ts" } ]
+    },
+    "classComponents": {
+      "count": 3,
+      "items": [ { "file": "src/Old.tsx", "line": 10, "name": "OldComponent", "base": "React.Component" } ]
+    },
+    "emptyCatch": {
+      "count": 7,
+      "items": [ { "file": "src/utils.ts", "line": 42, "variable": "err" } ]
+    },
+    "evalCalls": {
+      "count": 1,
+      "items": [ { "file": "src/sandbox.ts", "line": 15 } ]
+    },
+    "varUsage": {
+      "count": 12,
+      "items": [ { "file": "src/legacy.js", "line": 8, "name": "config", "value": "{}" } ]
+    },
+    "duplicateConditions": {
+      "count": 2,
+      "items": [ { "file": "src/logic.ts", "line": 55, "condition": "isAuthenticated" } ]
     }
   }
 }

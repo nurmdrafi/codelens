@@ -19,6 +19,8 @@ Read `.claude-review/extraction.json`. Focus on:
 - `hotspots` — detailed structural data (imports, exports, hooks, functions)
 - `metadata` — tech stack and file counts
 - `fallow.deadCode.circularDeps` — import cycles from fallow (TS/JS only, present when `fallow.detected` is true)
+- `astGrep.imports` — AST-accurate import analysis across all languages (present when `astGrep.detected` is true)
+- `astGrep.classComponents` — class declarations extending a base class
 
 ## Architecture Criteria
 
@@ -56,6 +58,8 @@ Evaluate each finding against these checks:
    - Cross-layer dependencies (components importing from routes, etc.)
    - Heavy use of `export default` vs named exports
    - If `fallow.deadCode.circularDeps` is present, include each circular dependency chain as an architecture finding tagged with `"source": "fallow"`. Classify circular deps as High severity.
+   - If `astGrep.imports` is present, use AST-accurate import counts per file instead of rg-based estimates. Files with >15 imports are potential god objects.
+   - If `astGrep.classComponents` is present, flag legacy class component usage in React codebases. Tag with `"source": "ast-grep"`.
 
 2. **State management patterns**: Evaluate:
    - `useState`/`useEffect` counts — high counts indicate complex component logic
