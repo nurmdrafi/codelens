@@ -79,6 +79,7 @@ If argument is `setup-check`, run these diagnostics and print a checklist:
 2. git — run `git --version` → ✅ / ❌
 3. context-mode MCP — try calling ctx_stats → ✅ connected / ❌ not connected (required: prevents context window flooding on large repos)
 4. Context7 MCP — try calling resolve-library-id → ✅ connected / ❌ not connected (required: enables library version checks for security findings)
+5. fallow (optional) — only checked if package.json exists in project root → run `npx fallow --version 2>/dev/null` → ✅ available (TS/JS dead-code + duplication analysis) / ℹ️ not installed (optional — install with `npm i -D fallow`)
 ```
 
 Print: "context-mode and Context7 MCPs are required for proper operation. Install both before using codelens."

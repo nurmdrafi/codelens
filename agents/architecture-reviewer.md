@@ -18,6 +18,7 @@ Read `.claude-review/extraction.json`. Focus on:
 - `patternMatches.architecture` — architecture-relevant pattern matches
 - `hotspots` — detailed structural data (imports, exports, hooks, functions)
 - `metadata` — tech stack and file counts
+- `fallow.deadCode.circularDeps` — import cycles from fallow (TS/JS only, present when `fallow.detected` is true)
 
 ## Architecture Criteria
 
@@ -37,6 +38,7 @@ Evaluate each finding against these checks:
 - **State management**: Appropriate use of local vs global state, no stale closure bugs
 - **Scalability**: Identify files that will grow unmanageably, bottlenecks in data flow
 - **Long-term maintainability**: Flag tight coupling, hidden dependencies, magic values
+- **Circular dependencies** (fallow): Import cycles that prevent tree-shaking and risk initialization failures
 
 ## Severity Classification
 
@@ -53,6 +55,7 @@ Evaluate each finding against these checks:
    - Circular dependency patterns
    - Cross-layer dependencies (components importing from routes, etc.)
    - Heavy use of `export default` vs named exports
+   - If `fallow.deadCode.circularDeps` is present, include each circular dependency chain as an architecture finding tagged with `"source": "fallow"`. Classify circular deps as High severity.
 
 2. **State management patterns**: Evaluate:
    - `useState`/`useEffect` counts — high counts indicate complex component logic

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-12
+
+### Added
+- **Fallow integration** — optional TS/JS codebase intelligence for dead-code and duplication analysis
+  - Phase A scanner auto-detects TS/JS projects via `package.json` and runs `fallow dead-code` + `fallow dupes`
+  - Human-format output (~5-7KB per command) parsed via `ctx_execute_file` sandbox — only ~2-4KB summaries enter context
+  - Dead-code findings (unused exports, files, types, deps, circular deps) folded into `extraction.json`
+  - Duplication findings (clone families, line ranges, extraction suggestions) folded into `extraction.json`
+  - Phase B code-quality reviewer consumes fallow dead-code + duplication data
+  - Phase B architecture reviewer consumes fallow circular dependency data
+  - Phase B security reviewer consumes fallow unlisted dependency data
+  - `/review setup-check` shows fallow availability (soft check, does not fail if missing)
+- `docs/superpowers/specs/2026-06-12-fallow-integration-design.md` — integration design spec
+
+### Changed
+- `CLAUDE.md` — added Optional Dependencies section with fallow, updated architecture diagram
+- `agents/codelens-scanner.md` — added Step 2.5 (Fallow Extraction), updated extraction.json schema
+- `agents/code-quality-reviewer.md` — added fallow data to Input, criteria, and analysis process
+- `agents/architecture-reviewer.md` — added fallow circular deps to Input, criteria, and analysis
+- `agents/security-reviewer.md` — added fallow unlisted deps to Input and analysis process
+- `skills/review/SKILL.md` — added fallow soft check to setup-check
+
 ## [1.1.0] - 2026-06-12
 
 ### Fixed

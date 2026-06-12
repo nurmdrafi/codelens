@@ -22,6 +22,7 @@ Markdown-based agents and skills. No build step, no runtime dependencies, no com
 ```
 Phase A: codelens-scanner (single-pass extraction)
   → rg pattern scan + hotspot deep-dive
+  → fallow dead-code + dupes (TS/JS only, optional)
   → writes .claude-review/extraction.json
 
 Phase B: 4 domain reviewers (parallel, read extraction.json only)
@@ -42,6 +43,12 @@ These are NOT optional. All must be installed and configured:
 | **`rg` (ripgrep)** | scanner, all Phase B agents | Primary search tool. Always prefer `rg` over `grep`, `find`, or `Glob`. |
 | **context-mode MCP** | codelens-scanner | Sandboxed extraction (`ctx_batch_execute`, `ctx_execute_file`) prevents context flooding |
 | **Context7 MCP** | security, architecture, code-quality reviewers | Library version verification, CVE checks, deprecated API detection |
+
+## Optional Dependencies
+
+| Dependency | Used By | Purpose |
+|---|---|---|
+| **`fallow`** | codelens-scanner | TS/JS dead-code and duplication analysis. Auto-detected via `package.json`. Skipped silently for non-TS/JS projects. |
 
 ## File Map
 
@@ -128,7 +135,7 @@ Every agent in this pipeline follows these rules:
 Edit the report template section in `skills/review/SKILL.md`. The orchestrator reads this template when compiling.
 
 ### Test locally
-Copy `agents/` and `skills/` into a test project's `.claude/` dir, then run `/review` variants.
+Copy `agents/` and `skills/` into a test project's `.claude/` dir, then run `/review` variants. For TS/JS projects, install fallow (`npm i -D fallow`) to get dead-code and duplication findings.
 
 ### Release a new version
 1. Update the version header in `CHANGELOG.md` (e.g., add `## [1.2.0] - YYYY-MM-DD`)

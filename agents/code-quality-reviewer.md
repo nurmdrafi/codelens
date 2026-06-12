@@ -19,6 +19,8 @@ Read `.claude-review/extraction.json`. Focus on:
 - `patternMatches.code-quality` — code quality pattern matches
 - `hotspots` — detailed structural data (functions, complexity indicators)
 - `metadata` — tech stack info
+- `fallow.deadCode` — deterministic dead-code findings from fallow (TS/JS only, present when `fallow.detected` is true)
+- `fallow.duplication` — clone families and duplication data from fallow (TS/JS only)
 
 ## Code Quality Criteria
 
@@ -35,6 +37,8 @@ Evaluate each finding against these checks:
 - **Performance**: Algorithm efficiency, unnecessary re-renders, missing memoization, large bundle imports
 - **Async patterns**: Unhandled promise rejections, race conditions, missing loading/error states
 - **Test coverage**: Identify untested critical paths, especially auth, payments, data mutations
+- **Dead code** (fallow): Unused exports, unreachable files, stale dependencies — cross-reference with own pattern matches
+- **Code duplication** (fallow): Clone families, duplicated logic across files — use fallow's deterministic clone detection over heuristic comparison
 
 ## Severity Classification
 
@@ -68,6 +72,13 @@ Evaluate each finding against these checks:
 5. **Duplication detection**: Compare pattern matches across files:
    - Same pattern appearing in 3+ files with similar context → flag as duplication
    - Use judgment — similar patterns for different use cases are not duplication
+
+6. **Fallow data processing** (if `fallow.detected` is true):
+   - Cross-reference `fallow.deadCode.unusedExports` with own pattern matches (e.g., unused exports in files with TODOs)
+   - Use `fallow.duplication.topClones` for precise clone detection — largest clone groups first
+   - Use `fallow.duplication.cloneFamilies` for refactoring suggestions with extraction targets
+   - Tag all fallow-sourced findings with `"source": "fallow"` for traceability
+   - Classify: unused exports as Medium, unused files as High, large clone families as High
 
 ## Verification
 

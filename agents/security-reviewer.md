@@ -17,6 +17,7 @@ You are a security auditor. You analyze extraction data and produce security fin
 Read `.claude-review/extraction.json`. Focus on:
 - `patternMatches.security` — all security-relevant pattern matches
 - `hotspots` — detailed structural data for large/complex files
+- `fallow.deadCode.unlistedDeps` — packages imported in code but missing from package.json (TS/JS only, present when `fallow.detected` is true)
 
 ## Security Criteria
 
@@ -56,6 +57,11 @@ Evaluate each finding against OWASP Top 10 (2021):
    - What is the blast radius if exploited?
 
 3. **Cross-reference**: Check if security patterns co-occur with architectural issues (e.g., no server-side validation + client-side auth checks = A01).
+
+4. **Unlisted dependency check** (if `fallow.detected` is true):
+   - For each package in `fallow.deadCode.unlistedDeps`, flag as a supply chain risk (OWASP A06 — Vulnerable Components)
+   - Packages imported in code but missing from `package.json` may be implicitly installed via transitive dependencies — version is uncontrolled
+   - Tag findings with `"source": "fallow"`. Classify as Medium severity.
 
 ## Library Verification
 
