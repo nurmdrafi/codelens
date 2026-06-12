@@ -13,8 +13,8 @@ Security-only review: OWASP Top 10 analysis, secret detection, injection pattern
 
 ## What it does
 
-1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `security` and writes `.codelens-review/extraction.json`.
-2. **Phase B — Analyze:** `security-reviewer` reads extraction.json and writes `.codelens-review/findings/security.json`.
+1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `security` and writes `.codelens/extraction.json`.
+2. **Phase B — Analyze:** `security-reviewer` reads extraction.json and writes `.codelens/findings/security.json`.
 3. **Phase C — Compile:** `codelens-reviewer` applies `skills/_shared/report-template.md` and writes `SECURITY_REPORT.md` at repo root.
 
 ## Argument Parsing
@@ -28,8 +28,9 @@ Security-only review: OWASP Top 10 analysis, secret detection, injection pattern
 ## Execution
 
 1. Parse args
-2. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=security`
-3. On completion: report at `SECURITY_REPORT.md`; raw findings at `.codelens-review/findings/security.json`
+2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
+3. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=security`
+4. On completion: report at `SECURITY_REPORT.md`; raw findings at `.codelens/findings/security.json`
 
 ## See Also
 

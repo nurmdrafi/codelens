@@ -224,11 +224,11 @@ codelens uses a **3-phase pipeline** designed to minimize token cost:
 - **ast-grep** for structural AST patterns (imports, class declarations, empty catch blocks, eval calls) — supports 20+ languages
 - **fallow** for TS/JS dead-code and duplication analysis (unused exports, circular deps, clone families)
 
-For the top 10-15 largest files (complexity hotspots), it extracts structural data: function lists, JSX elements, imports, security signals. Everything is written to `.codelens-review/extraction.json`.
+For the top 10-15 largest files (complexity hotspots), it extracts structural data: function lists, JSX elements, imports, security signals. Everything is written to `.codelens/extraction.json`.
 
-**Phase B — Domain Analysis:** Each domain reviewer runs a pipeline integrity check first — verifying `extraction.json` exists and context-mode is available via `ctx_stats`. Then they read only the extraction data — never your source files directly. Security uses Context7 to verify library versions and check for known CVEs. Architecture verifies patterns against current best practices. Accessibility checks component-library ARIA patterns via Context7. All findings include a `status` field (`complete`, `error`, or `partial_failure`) and are written to `.codelens-review/findings/<domain>.json`.
+**Phase B — Domain Analysis:** Each domain reviewer runs a pipeline integrity check first — verifying `extraction.json` exists and context-mode is available via `ctx_stats`. Then they read only the extraction data — never your source files directly. Security uses Context7 to verify library versions and check for known CVEs. Architecture verifies patterns against current best practices. Accessibility checks component-library ARIA patterns via Context7. All findings include a `status` field (`complete`, `error`, or `partial_failure`) and are written to `.codelens/findings/<domain>.json`.
 
-**Phase C — Merge & Report:** The orchestrator reads all findings, deduplicates cross-domain issues (same file:line merged into a single row), sorts by severity, and compiles the final report. Raw findings are kept in `.codelens-review/`; the orchestrator compiles the final Markdown report from JSON using the shared template at `skills/_shared/report-template.md`.
+**Phase C — Merge & Report:** The orchestrator reads all findings, deduplicates cross-domain issues (same file:line merged into a single row), sorts by severity, and compiles the final report. Raw findings are kept in `.codelens/`; the orchestrator compiles the final Markdown report from JSON using the shared template at `skills/_shared/report-template.md`.
 
 Files are read **at most once** — the extraction data is shared across all domain reviewers, avoiding the 4x token cost of independent scanning.
 

@@ -1,6 +1,6 @@
 # Report Template (shared)
 
-This is the single source of truth for the Markdown report format. The orchestrator (`agents/codelens-reviewer.md`) applies this template when compiling the final report from `.codelens-review/findings/*.json`.
+This is the single source of truth for the Markdown report format. The orchestrator (`agents/codelens-reviewer.md`) applies this template when compiling the final report from `.codelens/findings/*.json`.
 
 ## Report Structure
 
@@ -69,7 +69,7 @@ Every codelens report (single-domain or full) follows this structure:
 
 | Step | Tool | Notes |
 |------|------|-------|
-| Extraction read | Read | .codelens-review/extraction.json |
+| Extraction read | ctx_execute_file | .codelens/extraction.json |
 | Pattern searches | ctx_batch_execute | context-mode |
 | File deep-reads | ctx_execute_file | context-mode |
 | Library/CVE checks | Context7 | MCP |

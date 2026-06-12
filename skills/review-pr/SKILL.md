@@ -14,7 +14,7 @@ Reviews only the files changed in a git diff. Uses presets from `.claude/review-
 
 1. Resolve the commit range (default: `main...HEAD`).
 2. List changed files via `git diff --name-only <base>...<head>`.
-3. **Phase A — Scan:** `codelens-scanner` extracts patterns from changed files only → `.codelens-review/extraction.json`.
+3. **Phase A — Scan:** `codelens-scanner` extracts patterns from changed files only → `.codelens/extraction.json`.
 4. **Phase B — Analyze:** Domain reviewers per preset (default: security + code-quality) write findings JSONs.
 5. **Phase C — Compile:** `codelens-reviewer` applies `skills/_shared/report-template.md` and writes `PR_REVIEW_<base>-<head>.md` at repo root.
 
@@ -31,9 +31,10 @@ Reviews only the files changed in a git diff. Uses presets from `.claude/review-
 ## Execution
 
 1. Parse args (range, commit, or preset)
-2. Resolve changed files via git
-3. Dispatch to `codelens-reviewer` orchestrator with `mode=pr`, `range=<resolved>`
-4. On completion: report at `PR_REVIEW_<base>-<head>.md`
+2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
+3. Resolve changed files via git
+4. Dispatch to `codelens-reviewer` orchestrator with `mode=pr`, `range=<resolved>`
+5. On completion: report at `PR_REVIEW_<base>-<head>.md`
 
 ## See Also
 

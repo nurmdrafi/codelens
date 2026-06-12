@@ -13,8 +13,8 @@ Code-quality-only review: complexity, duplication, async patterns, code smells. 
 
 ## What it does
 
-1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `quality` and writes `.codelens-review/extraction.json`.
-2. **Phase B — Analyze:** `code-quality-reviewer` reads extraction.json and writes `.codelens-review/findings/quality.json`.
+1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `quality` and writes `.codelens/extraction.json`.
+2. **Phase B — Analyze:** `code-quality-reviewer` reads extraction.json and writes `.codelens/findings/quality.json`.
 3. **Phase C — Compile:** `codelens-reviewer` applies `skills/_shared/report-template.md` and writes `CODE_QUALITY_REPORT.md` at repo root.
 
 ## Argument Parsing
@@ -28,8 +28,9 @@ Code-quality-only review: complexity, duplication, async patterns, code smells. 
 ## Execution
 
 1. Parse args
-2. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=quality`
-3. On completion: report at `CODE_QUALITY_REPORT.md`; raw findings at `.codelens-review/findings/quality.json`
+2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
+3. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=quality`
+4. On completion: report at `CODE_QUALITY_REPORT.md`; raw findings at `.codelens/findings/quality.json`
 
 ## See Also
 

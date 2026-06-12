@@ -24,11 +24,11 @@ Phase A: codelens-scanner (single-pass extraction)
   → rg pattern scan + hotspot deep-dive
   → fallow dead-code + dupes (TS/JS only, optional)
   → ast-grep structural scan (20+ languages, optional)
-  → writes .codelens-review/extraction.json
+  → writes .codelens/extraction.json
 
 Phase B: 4 domain reviewers (parallel, read extraction.json only)
   → security-reviewer, architecture-reviewer, code-quality-reviewer, a11y-reviewer
-  → each writes .codelens-review/findings/<domain>.json
+  → each writes .codelens/findings/<domain>.json
 
 Phase C: codelens-reviewer (orchestrator)
   → cross-domain dedup, severity sort, report compilation
@@ -130,6 +130,7 @@ Always list ALL tools the agent needs. The runtime grants access based on this l
 Every agent in this pipeline follows these rules:
 - **Severity-first ordering** — findings are Critical > High > Medium > Low > Informational, never grouped by domain
 - **Single-pass reading** — files are read at most once by the scanner; Phase B agents read extraction.json, not source files
+- **No Read on source files** — Phase B agents do NOT have `Read` in their tools array (structural enforcement). All file analysis goes through `ctx_execute_file`
 - **rg over Glob** — always prefer `rg` (ripgrep) over `Glob` for codebase searches
 - **ctx_batch_execute** — mandatory for all batched analysis commands; never run sequentially via raw Bash
 - **ctx_execute_file** — mandatory for file content analysis; never load raw file contents into context via Read or Bash

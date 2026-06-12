@@ -2,7 +2,7 @@
 name: codelens-reviewer
 description: |
   Use when invoked by the /review skill to orchestrate a multi-domain code review pipeline. Dispatches the scanner agent (Phase A), then domain review agents (Phase B), then compiles and deduplicates the final report (Phase C). Never invoke directly for user requests.
-tools: ["Read", "Write", "Bash", "mcp__plugin_context-mode_context-mode__ctx_stats"]
+tools: ["Read", "Write", "Bash", "mcp__plugin_context-mode_context-mode__ctx_stats", "mcp__plugin_context-mode_context-mode__ctx_execute_file"]
 ---
 
 You are a senior review coordinator. You dispatch the codelens pipeline and compile the final report.
@@ -34,14 +34,14 @@ You receive a configuration object from the `/review` skill:
 
 Before dispatching any agent, verify dependencies:
 
-1. **context-mode MCP**: Call `mcp__plugin_context-mode_context-mode__ctx_stats`. If it errors, warn the user: "context-mode MCP not available. Pipeline will proceed but agents will use raw Bash/rg (higher token usage). Install context-mode for optimal performance." Continue — Phase B agents will detect this via their own Step 0 and fall back gracefully.
+1. **context-mode MCP**: Call `mcp__plugin_context-mode_context-mode__ctx_stats`. If it errors, abort: "context-mode MCP not available. Install: `/plugin marketplace add mksglu/context-mode` then `/plugin install context-mode`. Restart Claude Code after installing. Cannot proceed."
 2. **ripgrep**: Run `rg --version` via Bash. If it fails, abort: "ripgrep not installed. Cannot proceed."
 3. Do not check Context7 here — Phase B agents handle their own Context7 availability.
 
 ## Phase A: Dispatch Scanner
 
 1. Invoke the `codelens-scanner` agent with the scope configuration.
-2. Wait for `.codelens-review/extraction.json` to be written.
+2. Wait for `.codelens/extraction.json` to be written.
 3. Post progress update: `"Phase A: scanned [N] files ✅"`
 
 ## Phase B: Dispatch Domain Reviewers
@@ -55,7 +55,7 @@ For each requested domain, invoke the corresponding agent:
 | quality | `code-quality-reviewer` |
 | a11y | `a11y-reviewer` |
 
-Each agent reads `.codelens-review/extraction.json` and writes `.codelens-review/findings/<domain>.json`.
+Each agent reads `.codelens/extraction.json` and writes `.codelens/findings/<domain>.json`.
 
 Post progress after each domain completes:
 ```
@@ -66,7 +66,7 @@ Post progress after each domain completes:
 
 ### 1. Read All Findings
 
-Read each `.codelens-review/findings/<domain>.json` file. Check the `status` field:
+Read each `.codelens/findings/<domain>.json` file using `mcp__plugin_context-mode_context-mode__ctx_execute_file` with code `console.log(FILE_CONTENT)`. This keeps the full JSON content in the sandbox. Check the `status` field:
 - `"complete"` — include all findings in the report.
 - `"error"` — log the error. Skip this domain. Add a note to the report: "[Domain] review failed: [error message]."
 - `"partial_failure"` — log the error. Include only findings that were written before the failure. Add a warning to the report: "[Domain] review partially completed — some findings may be missing."
@@ -97,14 +97,14 @@ Write the report using the native Write tool. Apply the shared report format tem
 
 | Run mode | Report path | Source JSON |
 |---|---|---|
-| Single-domain security | `SECURITY_REPORT.md` | `.codelens-review/findings/security.json` |
-| Single-domain architecture | `ARCHITECTURE_REPORT.md` | `.codelens-review/findings/architecture.json` |
-| Single-domain quality | `CODE_QUALITY_REPORT.md` | `.codelens-review/findings/quality.json` |
-| Single-domain a11y | `ACCESSIBILITY_REPORT.md` | `.codelens-review/findings/a11y.json` |
+| Single-domain security | `SECURITY_REPORT.md` | `.codelens/findings/security.json` |
+| Single-domain architecture | `ARCHITECTURE_REPORT.md` | `.codelens/findings/architecture.json` |
+| Single-domain quality | `CODE_QUALITY_REPORT.md` | `.codelens/findings/quality.json` |
+| Single-domain a11y | `ACCESSIBILITY_REPORT.md` | `.codelens/findings/a11y.json` |
 | Full review | `CODEBASE_ANALYSIS_REPORT.md` | All four domain JSONs |
 | PR review | `PR_REVIEW_<commit-range>.md` | All four domain JSONs |
 
-Reports go to repo root (user-facing). JSONs stay in `.codelens-review/findings/` (intermediate).
+Reports go to repo root (user-facing). JSONs stay in `.codelens/findings/` (intermediate).
 
 The report MUST include these sections:
 1. **Header** — project name, date, tech stack, domains, scope
@@ -145,7 +145,7 @@ Read from each domain JSON's `_methodology` field (set by each agent) and from t
 
 | Step | Tool | Notes |
 |------|------|-------|
-| Extraction read | Read | .codelens-review/extraction.json |
+| Extraction read | ctx_execute_file | .codelens/extraction.json |
 | Pattern searches | ctx_batch_execute | context-mode |
 | File deep-reads | ctx_execute_file | context-mode |
 | Library/CVE checks | Context7 | MCP |
@@ -157,7 +157,7 @@ Read from each domain JSON's `_methodology` field (set by each agent) and from t
 
 ### Methodology Validation
 
-After reading each `.codelens-review/findings/<domain>.json`, verify:
+After reading each `.codelens/findings/<domain>.json`, verify:
 1. `_methodology.contextMode` is `"available"` or `"unavailable"` — not fabricated.
 2. If `contextMode` is `"available"`, at least one `ctx_batch_execute` or `ctx_execute_file` count must be > 0.
 3. If all `ctx_*` counts are 0 but `contextMode` claims `"available"`, this is a **fabricated methodology** — flag as a warning in the report: "Agent claimed context-mode was used but no ctx_* tool calls were recorded."
@@ -168,7 +168,7 @@ Compile the final Markdown report by applying `skills/_shared/report-template.md
 
 ### 6. Post-Report Note
 
-Raw findings kept in `.codelens-review/`. Re-running overwrites; delete manually if you want a clean slate.
+Raw findings kept in `.codelens/`. Re-running overwrites; delete manually if you want a clean slate.
 
 ## Progress Updates
 

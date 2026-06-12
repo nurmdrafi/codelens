@@ -26,9 +26,16 @@ You receive a configuration object:
 }
 ```
 
-## Step 0: Load exclusions
+## Step 0: Verify context-mode (unskippable)
 
-Read `.claude/codelens-exclusions.json` (if it exists). If missing, use the baked-in default list embedded in this agent's "Default Exclusions (fallback)" section below.
+Call `mcp__plugin_context-mode_context-mode__ctx_stats`. If it returns successfully, context-mode is available — proceed. If it errors, STOP immediately and write `.codelens/extraction.json` with an error:
+```json
+{"error": "context-mode MCP not available. Scanner cannot proceed without it. Install context-mode and re-run."}
+```
+
+## Step 0.5: Load exclusions
+
+Read `.claude/codelens-exclusions.json` (if it exists) via `mcp__plugin_context-mode_context-mode__ctx_execute_file` with code `console.log(FILE_CONTENT)`. If missing, use the baked-in default list embedded in this agent's "Default Exclusions (fallback)" section below.
 
 Merge `defaults` + `byDomain[<requested-domain>]` into a single list. Strip any pattern matched by `keepInScope` rules (envFiles, cicd, projectConfig) — those override exclusions even if a broad glob would match.
 
@@ -152,19 +159,19 @@ Fallow provides deterministic dead-code and duplication analysis for TypeScript/
 
 ### Run fallow commands
 
-Create `.codelens-review/` directory first, then run via `mcp__plugin_context-mode_context-mode__ctx_batch_execute`:
+Create `.codelens/` directory first, then run via `mcp__plugin_context-mode_context-mode__ctx_batch_execute`:
 
 ```bash
-mkdir -p .codelens-review
-npx -y fallow dead-code --format human --quiet -o .codelens-review/fallow-dead-code.md 2>/dev/null || true
-npx -y fallow dupes --format human --quiet -o .codelens-review/fallow-dupes.md 2>/dev/null || true
+mkdir -p .codelens
+npx -y fallow dead-code --format human --quiet -o .codelens/fallow-dead-code.md 2>/dev/null || true
+npx -y fallow dupes --format human --quiet -o .codelens/fallow-dupes.md 2>/dev/null || true
 ```
 
 **Important:** Always append `|| true` — exit code 1 means "issues found" (normal), not a runtime error. Only exit code 2 is a real error.
 
 ### Parse dead-code output
 
-Use `ctx_execute_file` on `.codelens-review/fallow-dead-code.md` with this processing code:
+Use `ctx_execute_file` on `.codelens/fallow-dead-code.md` with this processing code:
 
 ```javascript
 const lines = FILE_CONTENT.split('\n');
@@ -239,7 +246,7 @@ console.log(JSON.stringify(result));
 
 ### Parse duplication output
 
-Use `ctx_execute_file` on `.codelens-review/fallow-dupes.md` with this processing code:
+Use `ctx_execute_file` on `.codelens/fallow-dupes.md` with this processing code:
 
 ```javascript
 const lines = FILE_CONTENT.split('\n');
@@ -325,7 +332,7 @@ sg run --pattern 'var $NAME = $VALUE' --json . 2>/dev/null || true
 sg run --pattern '$A && $A' --json . 2>/dev/null || true
 ```
 
-**Important:** Always append `|| true`. Save each output to `.codelens-review/ast-grep-<pattern>.json`.
+**Important:** Always append `|| true`. Save each output to `.codelens/ast-grep-<pattern>.json`.
 
 ### Parse ast-grep output
 
@@ -443,7 +450,7 @@ console.log(JSON.stringify(result));
 
 ## Step 4: Write Extraction Data
 
-Create `.codelens-review/` directory and write `extraction.json`:
+Create `.codelens/` directory and write `extraction.json`:
 
 **Validate output shape before writing.** extraction.json MUST include these top-level keys:
 - `metadata` (with `scanDate`, `scope`, `totalFiles`, `totalLines`)
@@ -559,6 +566,6 @@ If `.claude/codelens-exclusions.json` does not exist, use this shortened list:
 - `target`, `vendor`, `.gradle`, `.venv`, `venv`, `__pycache__`
 - `.git`, `.vscode`, `.idea`
 - `*.min.js`, `*.min.css`, `*.map`, `*.log`
-- `.codelens-review`, `CODEBASE_ANALYSIS_REPORT.md`, `*_REPORT.md`, `PR_REVIEW_*.md`
+- `.codelens`, `CODEBASE_ANALYSIS_REPORT.md`, `*_REPORT.md`, `PR_REVIEW_*.md`
 
 Warn the user in `extraction.json.warnings`: `"exclusion config not found — using fallback default list. Create .claude/codelens-exclusions.json for full coverage."`

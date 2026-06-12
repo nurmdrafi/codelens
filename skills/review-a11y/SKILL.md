@@ -13,8 +13,8 @@ Accessibility-only review: WCAG 2.1 AA analysis, ARIA patterns, keyboard navigat
 
 ## What it does
 
-1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `a11y` and writes `.codelens-review/extraction.json`.
-2. **Phase B — Analyze:** `a11y-reviewer` reads extraction.json and writes `.codelens-review/findings/a11y.json`.
+1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `a11y` and writes `.codelens/extraction.json`.
+2. **Phase B — Analyze:** `a11y-reviewer` reads extraction.json and writes `.codelens/findings/a11y.json`.
 3. **Phase C — Compile:** `codelens-reviewer` applies `skills/_shared/report-template.md` and writes `ACCESSIBILITY_REPORT.md` at repo root.
 
 ## Argument Parsing
@@ -28,8 +28,9 @@ Accessibility-only review: WCAG 2.1 AA analysis, ARIA patterns, keyboard navigat
 ## Execution
 
 1. Parse args
-2. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=a11y`
-3. On completion: report at `ACCESSIBILITY_REPORT.md`; raw findings at `.codelens-review/findings/a11y.json`
+2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
+3. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=a11y`
+4. On completion: report at `ACCESSIBILITY_REPORT.md`; raw findings at `.codelens/findings/a11y.json`
 
 ## See Also
 

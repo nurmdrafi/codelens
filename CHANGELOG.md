@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-06-13
+
+### Added
+- **Scanner Step 0: context-mode verification** — scanner now verifies context-mode availability via `ctx_stats` before proceeding. If unavailable, writes an error to `extraction.json` and stops.
+
+### Changed
+- **Working directory renamed.** `.codelens-review/` → `.codelens/`. Shorter, more standard. Existing `.codelens-review/` directories are not migrated — delete them manually.
+- **`Read` removed from Phase B agent tools.** All 4 Phase B agents (security, architecture, code-quality, a11y) no longer have `Read` in their `tools` frontmatter array. Extraction data is read via `ctx_execute_file` instead. This is structural enforcement — the model cannot use `Read` even if it tries. Addresses UAT-03 finding where the security reviewer used 28 raw `Read` calls on source files despite claiming context-mode was "available".
+- **Escape hatch sections removed from all Phase B agents.** The escape hatch ("you MAY Read that specific file") contradicted the "NEVER use Read on source files" rule. Removing it eliminates the contradiction that caused UAT-03's 0 ctx_* tool calls.
+- **Phase B Step 0 reordered.** `ctx_stats` check now comes first (before extraction check). If context-mode is unavailable, the agent stops immediately instead of falling back to raw Bash/rg.
+- **Orchestrator reads findings via `ctx_execute_file`.** Added `ctx_execute_file` to orchestrator tools. Findings JSONs are now read through the sandbox instead of raw `Read`.
+- **Report template methodology table updated.** "Extraction read" tool changed from `Read` to `ctx_execute_file`.
+- **Dependency gate added to all review skills.** Skills now check for ripgrep, context-mode MCP, and Context7 MCP before dispatching the pipeline. If any hard dependency is missing, the review is blocked immediately with install instructions — no tokens wasted on a pipeline that will fail.
+- **context-mode promoted from "strongly recommended" to "required"** in setup-check. The fallback to raw Bash/rg was removed; the setup check now reflects this.
+- **Orchestrator pre-flight hard-aborts on missing context-mode** instead of warning and continuing (the fallback path no longer exists).
+
 ## [1.5.0] - 2026-06-12
 
 ### Added
@@ -31,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠ Breaking Changes
 - **Command surface renamed.** `/review` and its subcommands are now `/codelens:review`, `/codelens:review-security`, `/codelens:review-architecture`, `/codelens:review-quality`, `/codelens:review-a11y`, `/codelens:review-pr`, `/codelens:help`. The plugin now follows the superpowers-style multi-skill convention — one skill per command. There is no backwards-compat shim.
-- **Working directory renamed.** `.claude-review/` → `.codelens-review/`. Existing `.claude-review/` directories from previous runs are not migrated — delete them manually.
+- **Working directory renamed.** `.claude-review/` → `.codelens/`. Existing `.claude-review/` directories from previous runs are not migrated — delete them manually.
 - **Agent renamed.** `agents/accessibility-reviewer.md` → `agents/a11y-reviewer.md`.
 
 ### Added
@@ -44,15 +60,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Domain-specific output filenames.** Standalone single-domain runs produce `<DOMAIN>_REPORT.md` at repo root (e.g., `SECURITY_REPORT.md`, `ARCHITECTURE_REPORT.md`, `CODE_QUALITY_REPORT.md`, `ACCESSIBILITY_REPORT.md`). Full review still produces `CODEBASE_ANALYSIS_REPORT.md`. PR review produces `PR_REVIEW_<range>.md`.
-- **Agents write JSON only.** Phase B reviewers (security, architecture, code-quality, a11y) now write `.codelens-review/findings/<domain>.json` exclusively. The orchestrator (`codelens-reviewer`) compiles the Markdown report from JSON via the shared template. Eliminates output-format drift.
-- **Working directory kept after run.** The orchestrator no longer suggests `rm -rf .codelens-review/`. Re-running overwrites; users delete manually if needed.
+- **Agents write JSON only.** Phase B reviewers (security, architecture, code-quality, a11y) now write `.codelens/findings/<domain>.json` exclusively. The orchestrator (`codelens-reviewer`) compiles the Markdown report from JSON via the shared template. Eliminates output-format drift.
+- **Working directory kept after run.** The orchestrator no longer suggests `rm -rf .codelens/`. Re-running overwrites; users delete manually if needed.
 - **context-mode MCP mandated in prompts.** Every Phase B agent's Analysis Process now defaults to `ctx_batch_execute`, `ctx_execute_file`, `ctx_search`. Raw `Bash`/`Grep` kept as logged fallback when context-mode MCP is unavailable. Target: ~25k tokens for single-domain security review (down from ~58k observed in UAT-01).
 - **OWASP classification rules tightened** (security-reviewer). A09 reserved for missing audit logs (not over-logging). A01 requires actual authorization bypass (not race conditions or PII exposure). PCI DSS noted in `impact` field, not `classification`.
 - **Dedup rule** added to all Phase B agents — findings on same `file:line` (±2 lines) consolidated.
 - **positiveFindings location requirement** — vague locations like `"project-wide"` rejected; specific file paths required.
 
 ### Fixed
-- **Scanner self-exclusion.** Scanner no longer analyzes its own working directory (`.codelens-review/`) or previous reports (`*_REPORT.md`, `PR_REVIEW_*.md`) from earlier runs. Fixes UAT-01 finding where the scanner re-analyzed its own output.
+- **Scanner self-exclusion.** Scanner no longer analyzes its own working directory (`.codelens/`) or previous reports (`*_REPORT.md`, `PR_REVIEW_*.md`) from earlier runs. Fixes UAT-01 finding where the scanner re-analyzed its own output.
 
 ## [1.3.0] - 2026-06-12
 

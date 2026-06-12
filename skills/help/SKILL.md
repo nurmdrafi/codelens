@@ -45,4 +45,4 @@ Lists all codelens commands and runs the setup check.
 
 ## Setup Check Details
 
-See `skills/_shared/setup-check.md` for the full check matrix and fallback behavior when context-mode MCP is unavailable.
+See `skills/_shared/setup-check.md` for the full check matrix. All three required tools (ripgrep, context-mode, Context7) must be available for reviews to run.

@@ -13,8 +13,8 @@ Architecture-only review: SOLID principles, dependency analysis, design patterns
 
 ## What it does
 
-1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `architecture` and writes `.codelens-review/extraction.json`.
-2. **Phase B — Analyze:** `architecture-reviewer` reads extraction.json and writes `.codelens-review/findings/architecture.json`.
+1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `architecture` and writes `.codelens/extraction.json`.
+2. **Phase B — Analyze:** `architecture-reviewer` reads extraction.json and writes `.codelens/findings/architecture.json`.
 3. **Phase C — Compile:** `codelens-reviewer` applies `skills/_shared/report-template.md` and writes `ARCHITECTURE_REPORT.md` at repo root.
 
 ## Argument Parsing
@@ -28,8 +28,9 @@ Architecture-only review: SOLID principles, dependency analysis, design patterns
 ## Execution
 
 1. Parse args
-2. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=architecture`
-3. On completion: report at `ARCHITECTURE_REPORT.md`; raw findings at `.codelens-review/findings/architecture.json`
+2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
+3. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=architecture`
+4. On completion: report at `ARCHITECTURE_REPORT.md`; raw findings at `.codelens/findings/architecture.json`
 
 ## See Also
 
