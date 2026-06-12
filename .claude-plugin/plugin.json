@@ -1,7 +1,7 @@
 {
   "name": "codelens",
-  "version": "1.0.0",
-  "description": "Configurable multi-domain code review for Claude Code: security, architecture, code quality, and accessibility — on your full repo, a module, or a PR diff.",
+  "version": "1.4.0",
+  "description": "Multi-domain code review and analysis for Claude Code: security, architecture, code quality, and accessibility — on your full repo, a module, or a PR diff. Review commands today; fix commands coming.",
   "author": {
     "name": "nurmdrafi",
     "url": "https://github.com/nurmdrafi"
