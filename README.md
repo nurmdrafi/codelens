@@ -1,9 +1,53 @@
 # codelens
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-blue)](https://github.com/nurmdrafi/codelens)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-blue)](https://github.com/nurmdrafi/codelens) [![GitHub stars](https://img.shields.io/github/stars/nurmdrafi/codelens)](https://github.com/nurmdrafi/codelens/stargazers) [![GitHub contributors](https://img.shields.io/github/contributors/nurmdrafi/codelens)](https://github.com/nurmdrafi/codelens/graphs/contributors)
 
-Configurable multi-domain code review for Claude Code: **security**, **architecture**, **code quality**, and **accessibility** — on your full repo, a module, or a PR diff.
+> **AI code review is not a substitute for human review.** Automated tools miss context, produce false positives, and cannot fully understand business logic or user experience. Always verify findings with manual code review. This tool is a starting point, not a final verdict.
+
+**An open-source Claude Code plugin that performs multi-domain code review — security, architecture, code quality, and accessibility — on your full repo, a module, or a PR diff.**
+
+Built on a token-efficient 3-phase pipeline that reads files once and shares extraction data across all domain reviewers.
+
+> **We want contributors!** If you care about code quality, security, or accessibility, please consider [submitting a PR](CONTRIBUTING.md). Every new pattern check helps developers ship better software.
+
+---
+
+## The Problem
+
+Code review is essential but inconsistent. Security vulnerabilities slip through. Accessibility is an afterthought. Architecture drifts. Developers review code under time pressure and miss things — especially outside their domain of expertise. A frontend developer may catch CSS issues but miss a SQL injection. A backend developer may catch API design flaws but miss missing ARIA labels.
+
+Even with linters and CI checks, significant issues evade detection because they require **cross-domain understanding** — a security issue that's also an architecture problem, an accessibility gap that's also a code quality issue.
+
+## The Solution
+
+**codelens** provides six specialized AI agents working as a coordinated pipeline:
+
+- **Security reviewer** — OWASP Top 10 classification with Context7-powered CVE verification
+- **Architecture reviewer** — SOLID compliance, dependency analysis, pattern verification
+- **Code quality reviewer** — Complexity scoring, duplication detection, async pattern analysis
+- **Accessibility reviewer** — WCAG 2.1 AA compliance, keyboard navigation, screen reader compatibility
+- **Scanner** — Single-pass extraction that reads each file once, not four times
+- **Orchestrator** — Cross-domain deduplication and severity-first report compilation
+
+## Agent Inventory
+
+| Agent | Phase | Purpose | File |
+|-------|-------|---------|------|
+| `codelens-scanner` | A | Single-pass extraction: ripgrep patterns + hotspot deep-dive | `agents/codelens-scanner.md` |
+| `security-reviewer` | B | OWASP Top 10 analysis with Context7 CVE checks | `agents/security-reviewer.md` |
+| `architecture-reviewer` | B | SOLID compliance, dependency direction, pattern verification | `agents/architecture-reviewer.md` |
+| `code-quality-reviewer` | B | Complexity, duplication, error handling, async patterns | `agents/code-quality-reviewer.md` |
+| `accessibility-reviewer` | B | WCAG 2.1 AA: keyboard nav, screen readers, ARIA, forms | `agents/accessibility-reviewer.md` |
+| `codelens-reviewer` | C | Orchestrator: dispatch, dedup, compile report | `agents/codelens-reviewer.md` |
+
+## Documentation
+
+| Guide | What It Covers |
+|-------|----------------|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, adding patterns, proposing domains, testing locally |
+| [CLAUDE.md](CLAUDE.md) | Project architecture, conventions, constraints, common workflows |
+| [examples/sample-report.md](examples/sample-report.md) | Full anonymized report from a real project (62 findings) |
+| [CHANGELOG.md](CHANGELOG.md) | Release history and version changes |
 
 ---
 
