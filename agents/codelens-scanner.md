@@ -26,6 +26,16 @@ You receive a configuration object:
 }
 ```
 
+## Step 0: Load exclusions
+
+Read `.claude/codelens-exclusions.json` (if it exists). If missing, use the baked-in default list embedded in this agent's "Default Exclusions (fallback)" section below.
+
+Merge `defaults` + `byDomain[<requested-domain>]` into a single list. Strip any pattern matched by `keepInScope` rules (envFiles, cicd, projectConfig) — those override exclusions even if a broad glob would match.
+
+Record the merged list as `exclusionsUsed` (an array of strings) in `extraction.json`. Phase B agents read this from extraction.json — they do NOT re-read the config file.
+
+Apply exclusions to every search call via `rg -g '!<pattern>'` flags (one per pattern). For ast-grep (`sg`), use `--globs='!<pattern>'`.
+
 ## Step 1: File Discovery
 
 Determine which files to scan based on scope:
@@ -142,19 +152,19 @@ Fallow provides deterministic dead-code and duplication analysis for TypeScript/
 
 ### Run fallow commands
 
-Create `.claude-review/` directory first, then run via `ctx_batch_execute` (or Bash if context-mode unavailable):
+Create `.codelens-review/` directory first, then run via `ctx_batch_execute` (or Bash if context-mode unavailable):
 
 ```bash
-mkdir -p .claude-review
-npx -y fallow dead-code --format human --quiet -o .claude-review/fallow-dead-code.md 2>/dev/null || true
-npx -y fallow dupes --format human --quiet -o .claude-review/fallow-dupes.md 2>/dev/null || true
+mkdir -p .codelens-review
+npx -y fallow dead-code --format human --quiet -o .codelens-review/fallow-dead-code.md 2>/dev/null || true
+npx -y fallow dupes --format human --quiet -o .codelens-review/fallow-dupes.md 2>/dev/null || true
 ```
 
 **Important:** Always append `|| true` — exit code 1 means "issues found" (normal), not a runtime error. Only exit code 2 is a real error.
 
 ### Parse dead-code output
 
-Use `ctx_execute_file` on `.claude-review/fallow-dead-code.md` with this processing code:
+Use `ctx_execute_file` on `.codelens-review/fallow-dead-code.md` with this processing code:
 
 ```javascript
 const lines = FILE_CONTENT.split('\n');
@@ -229,7 +239,7 @@ console.log(JSON.stringify(result));
 
 ### Parse duplication output
 
-Use `ctx_execute_file` on `.claude-review/fallow-dupes.md` with this processing code:
+Use `ctx_execute_file` on `.codelens-review/fallow-dupes.md` with this processing code:
 
 ```javascript
 const lines = FILE_CONTENT.split('\n');
@@ -315,7 +325,7 @@ sg run --pattern 'var $NAME = $VALUE' --json . 2>/dev/null || true
 sg run --pattern '$A && $A' --json . 2>/dev/null || true
 ```
 
-**Important:** Always append `|| true`. Save each output to `.claude-review/ast-grep-<pattern>.json`.
+**Important:** Always append `|| true`. Save each output to `.codelens-review/ast-grep-<pattern>.json`.
 
 ### Parse ast-grep output
 
@@ -435,7 +445,7 @@ If context-mode is NOT available, use `rg -A 3 -B 3` for key patterns in hotspot
 
 ## Step 4: Write Extraction Data
 
-Create `.claude-review/` directory and write `extraction.json`:
+Create `.codelens-review/` directory and write `extraction.json`:
 
 ```json
 {
@@ -530,3 +540,15 @@ Create `.claude-review/` directory and write `extraction.json`:
 - NEVER use Glob when rg (ripgrep) can do the job faster via Bash.
 - ALWAYS use ctx_batch_execute for running multiple analysis commands — never run them sequentially.
 - NEVER load raw file contents directly into context for analysis — use ctx_execute_file.
+
+## Default Exclusions (fallback when config file missing)
+
+If `.claude/codelens-exclusions.json` does not exist, use this shortened list:
+
+- `node_modules`, `dist`, `build`, `out`, `.next`, `.nuxt`, `.svelte-kit`, `.turbo`
+- `target`, `vendor`, `.gradle`, `.venv`, `venv`, `__pycache__`
+- `.git`, `.vscode`, `.idea`
+- `*.min.js`, `*.min.css`, `*.map`, `*.log`
+- `.codelens-review`, `CODEBASE_ANALYSIS_REPORT.md`, `*_REPORT.md`, `PR_REVIEW_*.md`
+
+Warn the user in `extraction.json.warnings`: `"exclusion config not found — using fallback default list. Create .claude/codelens-exclusions.json for full coverage."`
