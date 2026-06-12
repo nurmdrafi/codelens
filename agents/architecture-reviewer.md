@@ -131,7 +131,7 @@ Write `.codelens-review/findings/architecture.json`:
   "positiveFindings": [
     {
       "title": "Clean server/client component boundary",
-      "location": "project-wide",
+      "location": ["app/page.tsx", "app/components/CategoryClient.tsx"],
       "description": "Server pages fetch data, *Client components handle interactivity. Correct Next.js App Router pattern."
     }
   ]
