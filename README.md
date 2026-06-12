@@ -99,7 +99,7 @@ winget install BurntSushi.ripgrep.MSVC
 
 ### 2. Context7 MCP
 
-Library documentation lookup for security CVE verification, deprecated API detection, and architecture pattern validation. Required by security, architecture, and code-quality reviewers.
+Library documentation lookup for security CVE verification, deprecated API detection, architecture pattern validation, and component-library accessibility checks. Required by all Phase B reviewers (security, architecture, code-quality, a11y).
 
 ```bash
 /plugin marketplace add anthropics/claude-plugins-official   # if not already added
@@ -110,14 +110,12 @@ Source: [github.com/nurmdrafi/codelens](https://github.com/nurmdrafi/codelens) |
 
 ### 3. context-mode MCP
 
-Sandboxed file processing that prevents context window flooding during large-scale analysis. Required by the scanner agent.
+Sandboxed file processing that prevents context window flooding during large-scale analysis. Required by the scanner, all Phase B reviewers, and the orchestrator. Agents verify availability via `ctx_stats` before proceeding.
 
 ```bash
 /plugin marketplace add mksglu/context-mode
 /plugin install context-mode
 ```
-
-Source: [github.com/mksglu/context-mode](https://github.com/mksglu/context-mode)
 
 ### Verify installation
 
@@ -228,7 +226,7 @@ codelens uses a **3-phase pipeline** designed to minimize token cost:
 
 For the top 10-15 largest files (complexity hotspots), it extracts structural data: function lists, JSX elements, imports, security signals. Everything is written to `.codelens-review/extraction.json`.
 
-**Phase B — Domain Analysis:** Each domain reviewer reads only the extraction data — never your source files directly. Security uses Context7 to verify library versions and check for known CVEs. Architecture verifies patterns against current best practices. All findings are written to `.codelens-review/findings/<domain>.json`.
+**Phase B — Domain Analysis:** Each domain reviewer runs a pipeline integrity check first — verifying `extraction.json` exists and context-mode is available via `ctx_stats`. Then they read only the extraction data — never your source files directly. Security uses Context7 to verify library versions and check for known CVEs. Architecture verifies patterns against current best practices. Accessibility checks component-library ARIA patterns via Context7. All findings include a `status` field (`complete`, `error`, or `partial_failure`) and are written to `.codelens-review/findings/<domain>.json`.
 
 **Phase C — Merge & Report:** The orchestrator reads all findings, deduplicates cross-domain issues (same file:line merged into a single row), sorts by severity, and compiles the final report. Raw findings are kept in `.codelens-review/`; the orchestrator compiles the final Markdown report from JSON using the shared template at `skills/_shared/report-template.md`.
 
@@ -280,7 +278,7 @@ See [`examples/sample-report.md`](examples/sample-report.md) for a full anonymiz
 Install ripgrep: `brew install ripgrep` (macOS) or `apt install ripgrep` (Linux).
 
 ### "context-mode MCP not connected"
-The scanner needs context-mode for sandboxed extraction. Install it:
+The pipeline requires context-mode for sandboxed extraction. Without it, agents fall back to raw tools (higher token usage, slower). Install it:
 ```
 /plugin marketplace add mksglu/context-mode
 /plugin install context-mode
@@ -288,7 +286,7 @@ The scanner needs context-mode for sandboxed extraction. Install it:
 Then restart your Claude Code session.
 
 ### "Context7 MCP not connected"
-Security, architecture, and code-quality reviewers need Context7 for library verification. Install it:
+All Phase B reviewers need Context7 for library verification. Install it:
 ```
 /plugin install context7
 ```
@@ -339,7 +337,7 @@ Yes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the process: create a new agent 
 ```
 codelens/
 ├── .claude-plugin/
-│   ├── plugin.json            # Plugin manifest (v1.4.0+)
+│   ├── plugin.json            # Plugin manifest (v1.5.0+)
 │   └── marketplace.json       # Marketplace listing
 ├── skills/
 │   ├── review/

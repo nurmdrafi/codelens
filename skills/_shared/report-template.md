@@ -73,9 +73,9 @@ Every codelens report (single-domain or full) follows this structure:
 | Pattern searches | ctx_batch_execute | context-mode |
 | File deep-reads | ctx_execute_file | context-mode |
 | Library/CVE checks | Context7 | MCP |
-| Fallback searches | rg via Bash | used only if context-mode unavailable |
+| Fallback searches | N/A | context-mode is mandatory — no fallback |
 | Total tokens | <count> | (target ~25k single-domain) |
-| Context-mode status | <available / unavailable> | detection result |
+| Context-mode status | <available / unavailable> | from Step 0 ctx_stats check |
 | Exclusions applied | <count> | from .claude/codelens-exclusions.json |
 ```
 

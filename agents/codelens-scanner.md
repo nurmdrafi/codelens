@@ -69,7 +69,7 @@ Identify:
 
 Run ONE consolidated `rg` pass with ALL patterns from all 4 domains. Each pattern is tagged by domain.
 
-If context-mode MCP is available, use `ctx_batch_execute` with concurrency 4-8. Otherwise use direct `rg` via Bash.
+Use `mcp__plugin_context-mode_context-mode__ctx_batch_execute` with concurrency 4-8. This is mandatory — context-mode is a hard dependency declared in frontmatter.
 
 ### All patterns to scan:
 
@@ -152,7 +152,7 @@ Fallow provides deterministic dead-code and duplication analysis for TypeScript/
 
 ### Run fallow commands
 
-Create `.codelens-review/` directory first, then run via `ctx_batch_execute` (or Bash if context-mode unavailable):
+Create `.codelens-review/` directory first, then run via `mcp__plugin_context-mode_context-mode__ctx_batch_execute`:
 
 ```bash
 mkdir -p .codelens-review
@@ -314,7 +314,7 @@ ast-grep provides AST-aware structural search using tree-sitter. It supports 20+
 
 ### Run ast-grep commands
 
-Run via `ctx_batch_execute` (or Bash if context-mode unavailable). Each command outputs JSON to stdout:
+Run via `mcp__plugin_context-mode_context-mode__ctx_batch_execute`. Each command outputs JSON to stdout:
 
 ```bash
 sg run --pattern 'import $$$ from $MOD' --json . 2>/dev/null || true
@@ -392,7 +392,7 @@ If ast-grep is not installed or all commands fail, set `astGrep.detected = false
 
 For the top 10-15 largest/most-imported files, extract detailed structural information.
 
-If context-mode is available, use `ctx_execute_file` with processing code:
+Use `mcp__plugin_context-mode_context-mode__ctx_execute_file` with processing code:
 
 ```javascript
 const lines = FILE_CONTENT.split('\n');
@@ -441,11 +441,20 @@ lines.forEach((line, i) => {
 console.log(JSON.stringify(result));
 ```
 
-If context-mode is NOT available, use `rg -A 3 -B 3` for key patterns in hotspot files, and `Read` for the full content of the top 5 hotspots only.
-
 ## Step 4: Write Extraction Data
 
 Create `.codelens-review/` directory and write `extraction.json`:
+
+**Validate output shape before writing.** extraction.json MUST include these top-level keys:
+- `metadata` (with `scanDate`, `scope`, `totalFiles`, `totalLines`)
+- `patternMatches` (with sub-keys for each requested domain, even if empty arrays)
+- `exclusionsUsed` (array of strings, can be empty)
+
+If any required key is missing, the file is malformed. Do NOT write a partial file — instead write an error:
+```json
+{"error": "Scanner failed to produce valid extraction data. Missing: [keys]. Cannot proceed to Phase B."}
+```
+Phase B agents will detect this via their Step 0 gate (file exists but contains `error` key) and abort cleanly.
 
 ```json
 {
@@ -538,8 +547,9 @@ Create `.codelens-review/` directory and write `extraction.json`:
 - ALWAYS write extraction.json before completing.
 - ALWAYS include the metadata section with scan date, scope, and tech stack detection.
 - NEVER use Glob when rg (ripgrep) can do the job faster via Bash.
-- ALWAYS use ctx_batch_execute for running multiple analysis commands — never run them sequentially.
-- NEVER load raw file contents directly into context for analysis — use ctx_execute_file.
+- MANDATORY — you MUST use `mcp__plugin_context-mode_context-mode__ctx_batch_execute` for running multiple analysis commands. Never run them sequentially via raw Bash.
+- MANDATORY — you MUST use `mcp__plugin_context-mode_context-mode__ctx_execute_file` for file content analysis. NEVER load raw file contents directly into context via Read or Bash.
+- If any context-mode tool call returns an error, STOP and report: "context-mode MCP error: [error message]. Cannot continue extraction without context-mode."
 
 ## Default Exclusions (fallback when config file missing)
 

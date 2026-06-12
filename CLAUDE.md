@@ -42,8 +42,8 @@ These are NOT optional. All must be installed and configured:
 | Dependency | Used By | Purpose |
 |---|---|---|
 | **`rg` (ripgrep)** | scanner, all Phase B agents | Primary search tool. Always prefer `rg` over `grep`, `find`, or `Glob`. |
-| **context-mode MCP** | codelens-scanner | Sandboxed extraction (`ctx_batch_execute`, `ctx_execute_file`) prevents context flooding |
-| **Context7 MCP** | security, architecture, code-quality reviewers | Library version verification, CVE checks, deprecated API detection |
+| **context-mode MCP** | scanner, all Phase B agents, orchestrator | Sandboxed extraction (`ctx_batch_execute`, `ctx_execute_file`) prevents context flooding. Mandatory first call: `ctx_stats`. |
+| **Context7 MCP** | security, architecture, code-quality, a11y reviewers | Library version verification, CVE checks, deprecated API detection, component-library accessibility pattern checks |
 
 ## Optional Dependencies
 
@@ -131,8 +131,9 @@ Every agent in this pipeline follows these rules:
 - **Severity-first ordering** — findings are Critical > High > Medium > Low > Informational, never grouped by domain
 - **Single-pass reading** — files are read at most once by the scanner; Phase B agents read extraction.json, not source files
 - **rg over Glob** — always prefer `rg` (ripgrep) over `Glob` for codebase searches
-- **ctx_batch_execute** — always batch multiple analysis commands, never run sequentially
-- **ctx_execute_file** — never load raw file contents into context for analysis
+- **ctx_batch_execute** — mandatory for all batched analysis commands; never run sequentially via raw Bash
+- **ctx_execute_file** — mandatory for file content analysis; never load raw file contents into context via Read or Bash
+- **ctx_stats first** — Phase B agents must call `ctx_stats` as their first tool call (after reading extraction.json); skipping it is a protocol violation
 - **Evidence-backed findings** — every finding must have file path, line number, code snippet
 - **Cross-domain dedup** — same file:line (±2 lines) across domains → merge into single row
 - **Exclusions honored by all agents** — every search call (scanner + Phase B reviewers) applies patterns from `.claude/codelens-exclusions.json`. `.env` and CI/CD files remain in scope via `keepInScope` rules.

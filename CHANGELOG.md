@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-06-12
+
+### Added
+- **Pipeline integrity gate (Step 0)** in all Phase B agents — agents abort with structured error JSON if `extraction.json` is missing, empty, or contains an `error` key from a failed scanner run. Agents no longer improvise extraction from scratch.
+- **Mandatory context-mode protocol** — all Phase B agents now require `ctx_stats` as the very first tool call (protocol violation if skipped). Once context-mode is confirmed available, agents MUST use `ctx_batch_execute`/`ctx_execute_file` exclusively — no fallback to raw Bash/Grep permitted. Addresses UAT-01 and UAT-02 finding where agents used zero context-mode tools despite declaring them as hard dependencies.
+- **`status` field in findings JSON** — all Phase B agents now write `"status": "complete"`, `"error"`, or `"partial_failure"` in their output JSON. The orchestrator branches on this field in Phase C to handle failed or incomplete domains gracefully.
+- **Pre-flight dependency check** — orchestrator now runs `ctx_stats` and `rg --version` before dispatching any agent, catching missing dependencies early instead of failing silently mid-pipeline.
+- **Pipeline Caveat section** in reports — when any domain has non-complete status, a warning block appears before the Executive Summary alerting users to incomplete results with re-run instructions.
+- **Methodology validation** — orchestrator now detects fabricated `_methodology` blocks (agent claims `contextMode: "available"` but all `ctx_*` counts are 0) and flags it as a warning in the report.
+- **Scanner output shape validation** — scanner validates that `extraction.json` contains required keys (`metadata`, `patternMatches`, `exclusionsUsed`) before writing. Malformed output writes an `error` JSON instead, which Phase B agents catch in their Step 0 gate.
+
+### Changed
+- **context-mode MCP promoted to hard dependency for all agents.** Previously declared as hard dependency only for scanner. Now explicitly required by all Phase B agents and the orchestrator. Dependency tables in CLAUDE.md and README updated.
+- **Context7 MCP promoted to hard dependency for a11y-reviewer.** Previously the a11y agent's Dependencies section said "No Context7 needed" despite having Context7 tools in frontmatter and usage instructions in body. Now correctly declared as hard requirement for component-library accessibility checks.
+- **Orchestrator Context7 dependency list updated** — now includes `a11y-reviewer` alongside security, architecture, and code-quality reviewers.
+- **Removed all conditional "if context-mode is available" language** from scanner agent. Context-mode is now mandatory — no alternative paths.
+- **Replaced preference-based "ALWAYS prefer" instructions** with mandatory "you MUST use" protocol with exact tool call syntax examples.
+- **Post-Report Follow-up** now conditionally warns about error/partial_failure domains with re-run instructions.
+
+### Fixed
+- **Agents silently skipping context-mode MCP tools.** Two UAT runs (01.security, 02.security) confirmed agents used 26+ raw `Read` calls and 6 raw `rg` via Bash instead of `ctx_batch_execute`/`ctx_execute_file`, consuming 52.8k tokens for a single domain. Root cause: conditional language, easy fallback paths, and no hard gate preventing self-bootstrapping. Fixed by Step 0 gate, mandatory protocol, no-fallback-once-available, dual methodology validation, and scanner output shape validation.
+
 ## [1.4.0] - 2026-06-12
 
 ### ⚠ Breaking Changes

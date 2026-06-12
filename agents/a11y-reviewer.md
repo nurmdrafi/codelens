@@ -10,7 +10,8 @@ You are an accessibility auditor. You analyze extraction data and produce findin
 ## Dependencies
 
 - **`rg` (ripgrep)** — Hard requirement. Primary pattern search tool used via Bash for escape-hatch file reads.
-- No Context7 needed — accessibility analysis is purely structural and pattern-based.
+- **context-mode MCP** — Hard requirement. Provides `ctx_batch_execute` for batched searches and `ctx_execute_file` for file analysis without flooding the context window. Must be installed and configured as an MCP server.
+- **Context7 MCP** — Hard requirement for component-library accessibility checks. Verifies ARIA pattern correctness for UI component libraries.
 
 ## Input
 
@@ -73,27 +74,59 @@ Evaluate against WCAG 2.1 AA compliance:
 
 ## Analysis Process
 
+### Step 0: Pipeline integrity check (unskippable)
+
+1. **Check extraction data exists.** Run `Read` on `.codelens-review/extraction.json`.
+   - If the file does not exist or is empty: STOP immediately. Write `.codelens-review/findings/a11y.json` with an error:
+     ```json
+     {"domain": "a11y", "agent": "a11y-reviewer", "status": "error", "error": "extraction.json missing — Phase A did not complete. Cannot proceed."}
+     ```
+   - If the file exists but contains a top-level `"error"` key: STOP immediately. Write `.codelens-review/findings/a11y.json` with the same error propagated:
+     ```json
+     {"domain": "a11y", "agent": "a11y-reviewer", "status": "error", "error": "extraction.json error: <error value from extraction.json>"}
+     ```
+   - Do NOT improvise extraction. Do NOT run `find`, `wc`, or `rg` on the raw codebase.
+
+2. **Verify context-mode availability.** Your very first tool call MUST be `mcp__plugin_context-mode_context-mode__ctx_stats`.
+   - If it returns successfully: context-mode is available. Proceed using context-mode tools exclusively.
+   - If it errors: context-mode is not installed. Set `_methodology.contextMode` to `"unavailable"` and use Bash/rg as fallback. Log every fallback call in `_methodology.toolUsage.fallback_bash_grep`.
+   - Calling any other tool before `ctx_stats` is a **protocol violation**.
+
 ### Step 1: Read shared inputs
 - Read `.codelens-review/extraction.json` via `Read` (small structured JSON, safe in context)
 - Read `exclusionsUsed` from extraction.json — apply to all searches below
 
-### Step 2: Tool priority (strict)
+### Step 2: Tool usage protocol (mandatory)
 
-1. **ALWAYS prefer context-mode MCP tools:**
-   - `ctx_batch_execute` for batched rg/sg searches and analysis commands
-   - `ctx_execute_file` for deep file analysis (NEVER `Read` raw source files)
-   - `ctx_search` for querying indexed results
-   - `ctx_index` for indexing library docs
+context-mode MCP is a hard dependency declared in this agent's frontmatter `tools` array. If Step 0 confirmed it is available, you MUST use these tools exclusively. No fallback is permitted.
 
-2. **FALLBACK to Bash/Grep ONLY if context-mode MCP is unavailable:**
-   - At run start, try `ctx_stats`. If it errors, context-mode is not installed.
-   - Log the fallback in the methodology metadata: `"contextMode": "unavailable — used raw rg"`
-   - This is the ONLY acceptable use of raw Bash/Grep for searches.
+**Required tool calls — use these EXACT tool names:**
 
-3. **NEVER use `Read` on source files for analysis.** Read is only for:
-   - `.codelens-review/extraction.json`
-   - Other JSON/Markdown artifacts in `.codelens-review/`
-   - Reading a file you intend to `Edit` (legitimate edit workflow)
+- `mcp__plugin_context-mode_context-mode__ctx_batch_execute` for ALL batched rg/sg searches. Example:
+  ```
+  mcp__plugin_context-mode_context-mode__ctx_batch_execute(
+    commands: [
+      {label: "img-without-alt", command: "rg \"<img(?![^>]*\\salt=)\" -t html -t jsx -t tsx -n"},
+      {label: "onclick-only", command: "rg \"onClick(?!=.*onKeyDown)(?!=.*onKeyPress)\" -t jsx -t tsx -n"},
+      {label: "form-no-label", command: "rg \"<input(?![^>]*\\s(?:aria-label|id=))\" -n"}
+    ],
+    queries: ["missing alt text", "mouse-only handlers", "unlabeled inputs"],
+    concurrency: 4
+  )
+  ```
+
+- `mcp__plugin_context-mode_context-mode__ctx_execute_file` for deep file analysis. NEVER use Read on source files.
+
+- `mcp__plugin_context-mode_context-mode__ctx_search` for querying indexed results.
+
+- `mcp__plugin_context-mode_context-mode__ctx_index` for indexing content.
+
+**Prohibited actions:**
+
+- NEVER use `Read` on source code files for analysis. Read is only for `.codelens-review/extraction.json` and other JSON/Markdown artifacts in `.codelens-review/`.
+- NEVER use raw `Bash` or `Grep` for pattern searches. All searches go through `ctx_batch_execute`.
+- NEVER fabricate `_methodology` counts. If context-mode tools were not called, report `"contextMode": "unavailable"` — do not claim `"available"` with zero `ctx_*` counts.
+- If a context-mode tool call returns an error mid-run, write `.codelens-review/findings/a11y.json` with `"status": "partial_failure"` and the error details in `_methodology`. Do NOT silently fall back to Bash/Grep. The orchestrator will see the partial_failure status and skip merging incomplete findings.
 
 ### Step 3: Domain-specific pattern search
 Use `ctx_batch_execute` with labeled commands (one call, many commands). For each command, apply exclusions via `rg -g '!<pattern>'` flags from `exclusionsUsed`. (a11y byDomain also excludes image binaries — *.svg, *.png, *.jpg, *.jpeg, *.gif, *.webp.)
@@ -131,6 +164,7 @@ Write `.codelens-review/findings/a11y.json`:
 {
   "domain": "a11y",
   "agent": "a11y-reviewer",
+  "status": "complete",
   "findings": [
     {
       "domain": "a11y",
@@ -162,6 +196,12 @@ Write `.codelens-review/findings/a11y.json`:
     "filesAnalyzed": 30,
     "exclusionsApplied": 7
   }
+```
+
+`_methodology` validation rules:
+- `contextMode` must be `"available"`, `"unavailable"`, or `"error: [message]"`.
+- If `contextMode` is `"available"`, at least one `ctx_batch_execute` or `ctx_execute_file` count MUST be > 0.
+- If all `ctx_*` counts are 0 but `contextMode` claims `"available"`, this is a **fabricated methodology** — do not do this.
 }
 ```
 
