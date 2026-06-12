@@ -1,0 +1,48 @@
+---
+name: help
+description: |
+  Use when getting help with codelens commands, listing available skills, or running the setup check. Triggers: "codelens help", "list codelens commands", "codelens setup", "/codelens:help".
+user-invocable: true
+argument-hint: "[<command-name>]"
+---
+
+# Codelens Help
+
+Lists all codelens commands and runs the setup check.
+
+## What it does
+
+1. Runs the shared setup check (see `skills/_shared/setup-check.md`).
+2. Lists all available `/codelens:*` commands with one-line descriptions.
+3. If invoked as `/codelens:help <command-name>`, shows detailed help for that command.
+
+## Available Commands
+
+| Command | Purpose |
+|---|---|
+| `/codelens:review` | Full multi-domain review (security + architecture + quality + a11y) |
+| `/codelens:review-security` | Security-only review |
+| `/codelens:review-architecture` | Architecture-only review |
+| `/codelens:review-quality` | Code quality-only review |
+| `/codelens:review-a11y` | Accessibility-only review |
+| `/codelens:review-pr` | PR diff review |
+| `/codelens:help` | This command |
+
+## Future Commands (reserved)
+
+| Command | Status |
+|---|---|
+| `/codelens:fix` | Coming soon — automated remediation |
+| `/codelens:fix-security` | Coming soon |
+| `/codelens:fix-a11y` | Coming soon |
+
+## Execution
+
+1. Run setup check per `skills/_shared/setup-check.md`
+2. Print command list (table above)
+3. If arg matches a command name, print that skill's full body
+4. If arg is `fix` or `fix-*`, print "coming soon" message
+
+## Setup Check Details
+
+See `skills/_shared/setup-check.md` for the full check matrix and fallback behavior when context-mode MCP is unavailable.
