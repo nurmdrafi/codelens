@@ -3,6 +3,7 @@ name: review-security
 description: |
   Use when running a security-only code review on a codebase. Triggers: "security review", "security audit", "check security", "OWASP review", "/codelens:review-security".
   For full multi-domain review, use /codelens:review instead.
+  Accepts --ast-grep for exact structural detection of eval() and empty catch blocks (off by default).
 user-invocable: true
 argument-hint: "[--ast-grep | path | help]"
 ---

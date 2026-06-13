@@ -3,6 +3,7 @@ name: review
 description: |
   Use when running a full multi-domain code review (security + architecture + code quality + accessibility) on a codebase. Triggers: "full code review", "review everything", "audit codebase", "comprehensive review", "/codelens:review".
   For single-domain reviews, use /codelens:review-security, /codelens:review-architecture, /codelens:review-quality, or /codelens:review-a11y instead.
+  Accepts --fallow (dead-code + duplication, TS/JS) and --ast-grep (structural patterns: imports, classes, empty catch, eval). Both off by default.
 user-invocable: true
 argument-hint: "[--domains <list> | --preset <name> | --fallow | --ast-grep | path | help]"
 ---

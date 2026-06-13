@@ -3,6 +3,7 @@ name: review-architecture
 description: |
   Use when running an architecture-only code review on a codebase. Triggers: "architecture review", "design review", "SOLID analysis", "dependency check", "/codelens:review-architecture".
   For full multi-domain review, use /codelens:review instead.
+  Accepts --fallow (dead-code + duplication, TS/JS) and --ast-grep (imports, class hierarchy). Both off by default.
 user-invocable: true
 argument-hint: "[--fallow | --ast-grep | path | help]"
 ---

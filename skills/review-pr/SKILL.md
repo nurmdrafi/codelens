@@ -2,6 +2,7 @@
 name: review-pr
 description: |
   Use when reviewing a pull request or commit range. Scans only the diff for changed files. Triggers: "PR review", "review pull request", "review diff", "/codelens:review-pr".
+  Accepts --fallow and --ast-grep for diff-scoped dead-code and structural analysis. Both off by default.
 user-invocable: true
 argument-hint: "[base..head | commit-sha | preset | --fallow | --ast-grep | help]"
 ---

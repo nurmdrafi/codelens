@@ -333,6 +333,7 @@ Write the report via native `Write` tool to the input `outputFile` path at repo 
 - Only include Executive Summary lines, What's Done Well, and Methodology table rows for domains in `config.criteriaDomains`. These are the only domains that ran.
 - Every finding: file path, line range, OWASP/WCAG classification, evidence snippet, impact, fix.
 - **NO token counts, tool-use counts, or runtime anywhere in the report.** The Methodology section documents scope/files/tools — not cost.
+- **Optional-tools footer (conditional).** Emit the "Optional Analysis Skipped" section (see `skills/_shared/report-template.md`) IF AND ONLY IF (a) `fallow` OR `ast-grep` was detected as available during setup-check (i.e., `package.json` exists for fallow, OR `sg --version` succeeds for ast-grep), AND (b) the user passed NEITHER `--fallow` NOR `--ast-grep` at dispatch. To check (b): inspect `config.step2Sources` — if no `codelens:fallow-*` and no `codelens:astgrep-*` labels are present, the user passed neither flag. Omit the section entirely when: both tools were unavailable, OR the user passed one or both flags (they got what they asked for). Same detection signal as `scan.log`'s `Optional tools:` line. Fill in each tool's status placeholder as `Available` (detected but skipped), `Skipped` (detection failed), or `Used` (flag passed) — though the section is omitted entirely when the user passed any flag, so `Used` won't appear in practice.
 
 ### Report sections (per template)
 
@@ -342,6 +343,7 @@ Write the report via native `Write` tool to the input `outputFile` path at repo 
 4. What's Done Well — positive findings per domain in `config.criteriaDomains`
 5. Priority Actions — Immediate / Short-Term / Medium-Term / Backlog (for diff reports: "Must Fix Before Merge" / "Consider Fixing")
 6. Methodology — scope, domains (`config.criteriaDomains`), files scanned, tools used (no tokens)
+7. Optional Analysis Skipped — conditional; emit only when fallow/ast-grep was available but neither flag was passed (see Report rules above)
 
 ### Also write `.codelens/scan.log` (human-readable trace)
 

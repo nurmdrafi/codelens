@@ -3,6 +3,7 @@ name: review-quality
 description: |
   Use when running a code-quality-only review on a codebase. Triggers: "code quality review", "quality check", "complexity analysis", "duplication check", "/codelens:review-quality".
   For full multi-domain review, use /codelens:review instead.
+  Accepts --fallow (dead-code + duplication, TS/JS) and --ast-grep (empty catch, eval, var, duplicate conditions). Both off by default.
 user-invocable: true
 argument-hint: "[--fallow | --ast-grep | path | help]"
 ---

@@ -82,6 +82,29 @@ Every codelens report (single-domain or full) follows this structure:
 | Exclusions applied | <count> | from .claude/codelens-exclusions.json |
 ```
 
+## Optional Analysis Skipped
+
+**Emit this section IF AND ONLY IF** (a) `fallow` or `ast-grep` was detected as available during setup-check, AND (b) the user did NOT pass `--fallow` or `--ast-grep` at dispatch (i.e., neither flag's commands appear in the config the agent received). If both tools were unavailable (non-TS/JS project AND `sg` not installed), omit entirely — nothing to nudge. If the user passed either flag, omit entirely — they got what they asked for. Driven by the same detection signal as `scan.log`'s `Optional tools:` line.
+
+```markdown
+---
+
+## Optional Analysis Skipped
+
+This run was invoked without opt-in flags. The following tools were available on this project but not requested:
+
+- **`--fallow`** — dead-code, unused exports, circular imports, code duplication (TS/JS only). <Available: package.json detected / Skipped: not a TS/JS project / Used: --fallow was passed>
+- **`--ast-grep`** — structural pattern detection (eval, empty catch, imports, class hierarchy, var, duplicate conditions). <Available: sg installed / Skipped: sg not installed / Used: --ast-grep was passed>
+
+To enable next time, rerun with the flags. Examples for this review type:
+
+- `/codelens:review-quality --fallow --ast-grep`
+- `/codelens:review --preset full-audit --fallow`
+- `/codelens:review-pr --fallow --ast-grep`
+
+Run `/codelens:help` for the full flag reference.
+```
+
 ## Field Rules
 
 - **Severity ordering:** Critical > High > Medium > Low > Informational. Never grouped by domain.

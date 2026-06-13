@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-06-13
+
+### Changed
+- **fallow and ast-grep are now opt-in via `--fallow` / `--ast-grep` flags (default OFF).** Both tools were previously auto-invoked whenever detected, costing tokens and writing stray files (`fallow-*.md`, `quality-patterns.txt`, `eval.txt`, empty `findings/`) to `.codelens/` that no skill or agent documented as outputs. UAT 06 surfaced this on akg-frontend: fallow ran unprompted, wrote `fallow-dead-code.md` and `fallow-dupes.md`, and the agent improvised five more `.txt` files plus an empty `findings/` dir. Now both tools default OFF; users opt in per-invocation. Flags compose freely with `<path>`, `--domains`, `--preset`. Silent no-op when a flag is passed but detection fails (non-TS/JS for fallow, `sg` missing for ast-grep, no matching domain in scope).
+
+- **fallow commands no longer write files to `.codelens/`.** Dropped the `-o .codelens/fallow-*.md` argument and `mkdir -p .codelens` prefix. `ctx_batch_execute`'s auto-index captures stdout directly under the existing `codelens:fallow-deadcode` / `codelens:fallow-dupes` labels. Same findings, no stray files.
+
+- **Agent `.codelens/` discipline tightened.** New `NEVER` constraint: the agent writes ONLY `scan.log` to `.codelens/`. Explicitly forbids `fallow-dead-code.md`, `fallow-dupes.md`, `quality-patterns.txt`, `eval.txt`, `empty-catch.txt`, `var-source.txt`, `async-patterns.txt`, any `findings/` directory, and fallow's `-o` flag. Closes the loophole that let the agent improvise intermediate files at runtime.
+
+- **Setup-check output reworded for opt-in semantics.** `[OK] fallow` / `[OK] ast-grep` lines now read `[OK] fallow — available (opt-in: use --fallow)` so users see at the most visible moment that passing the flag is required. Detection ≠ invocation.
+
+### Added
+- **In-plugin discoverability for opt-in flags.** codelens runs inside Claude Code — users rarely open the GitHub repo, so they had no in-REPL way to learn `--fallow`/`--ast-grep` existed unless they independently ran `/codelens:help`. Three new surfaces close the gap:
+  - **Picker descriptions expanded.** Each review command's `description` frontmatter (what Claude Code renders in the slash-command autocomplete) now ends with a flag-tail sentence stating what flags it accepts and what they add. Users see this *before* any invocation. (`review-a11y` unchanged — no optional tools. `review-security` mentions only `--ast-grep`; others mention both flags.)
+  - **`/codelens:help` Quick reference table.** First thing printed when the user runs `/codelens:help` is a compact at-a-glance table: command × purpose × accepted flags × quick example. Users get the overview before drilling into per-command detail.
+  - **"Optional Analysis Skipped" footer in reports.** When a user runs a review without opt-in flags but fallow/ast-grep were available, the report gains a bottom section telling them exactly what they missed + rerun examples + `/codelens:help` pointer. Conditional: omitted when both tools were unavailable, or when the user passed either flag (they got what they asked for). Driven by the same detection signal as `scan.log`'s `Optional tools:` line.
+
+### Fixed
+- **README provenance corrected.** Optional Enhancements section now correctly attributes fallow to **Bart Waardenburg** (`fallow-rs` org) and ast-grep to **Herrington Darkholme**, noting ast-grep is used by **CodeRabbit** for AI code review and maintains the `ast-grep-essentials` rules collection. Earlier drafts referenced an unverified "Alibaba/open-code-review" connection that doesn't exist.
+
+- **Pipeline diagram updated.** The decision diamond between Inventory and Pattern Analysis is renamed from "Runtime detection: package.json? sg installed?" to "Opt-in gate: --fallow? --ast-grep? (+ detection passes)". The "What lands where" table clarifies that fallow/ast-grep output is auto-indexed and never written to disk, and that `scan.log` is the only file the agent writes to `.codelens/`.
+
 ## [1.7.1] - 2026-06-13
 
 ### Added

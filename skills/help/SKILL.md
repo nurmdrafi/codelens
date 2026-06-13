@@ -12,9 +12,30 @@ Lists all codelens commands and runs the setup check.
 
 ## What it does
 
-1. Runs the shared setup check (see `skills/_shared/setup-check.md`).
-2. Lists all available `/codelens:*` commands with one-line descriptions.
-3. If invoked as `/codelens:help <command-name>`, shows detailed help for that command.
+1. Prints the **Quick reference** table (at-a-glance overview of all commands + accepted flags).
+2. Runs the shared setup check (see `skills/_shared/setup-check.md`).
+3. Lists all available `/codelens:*` commands with one-line descriptions and optional-tool flag detail.
+4. If invoked as `/codelens:help <command-name>`, shows detailed help for that command (after the quick reference).
+
+## Quick reference
+
+Print this table FIRST when the user runs `/codelens:help` (with or without a command-name arg). It's the at-a-glance overview — purpose, accepted flags, and a quick example for each command. The detail sections below drill in if the user wants more.
+
+| Command | Purpose | Accepts flags | Quick example |
+|---|---|---|---|
+| `/codelens:review` | All 4 domains (security + architecture + quality + a11y) | `--domains`, `--preset`, `--fallow`, `--ast-grep` | `/codelens:review --preset full-audit --fallow` |
+| `/codelens:review-security` | OWASP / secrets / injection scan | `--ast-grep` | `/codelens:review-security --ast-grep` |
+| `/codelens:review-architecture` | SOLID + dependency analysis | `--fallow`, `--ast-grep` | `/codelens:review-architecture --fallow` |
+| `/codelens:review-quality` | Complexity, duplication, async patterns | `--fallow`, `--ast-grep` | `/codelens:review-quality --fallow --ast-grep` |
+| `/codelens:review-a11y` | WCAG 2.1 AA accessibility | (none) | `/codelens:review-a11y` |
+| `/codelens:review-pr` | Diff-only scan (PRs, commit ranges) | `--fallow`, `--ast-grep` | `/codelens:review-pr --ast-grep` |
+| `/codelens:help` | This output + setup check | `<command-name>` | `/codelens:help review-quality` |
+
+**Opt-in flags (default OFF):**
+- `--fallow` — dead-code + duplication analysis (TS/JS only; requires `package.json`). Adds unused files/exports/dependencies, circular imports, code duplication findings.
+- `--ast-grep` — structural pattern search (requires `sg` installed). Adds exact detection of `eval()`, empty catch, imports, class hierarchy, `var`, duplicate boolean conditions.
+
+Flags compose freely with `<path>`, `--domains`, and `--preset`. Silent no-op if detection fails (no error).
 
 ## Available Commands
 
@@ -56,10 +77,11 @@ Review commands accept opt-in flags for optional analysis tools. **Default: off.
 
 ## Execution
 
-1. Run setup check per `skills/_shared/setup-check.md`
-2. Print command list (table above)
-3. If arg matches a command name, print that skill's full body
-4. If arg is `fix` or `fix-*`, print "coming soon" message
+1. Print the Quick reference table (above) — first thing the user sees
+2. Run setup check per `skills/_shared/setup-check.md`
+3. Print the Available Commands list and Optional tool flags detail (below)
+4. If arg matches a command name, print that skill's full body
+5. If arg is `fix` or `fix-*`, print "coming soon" message
 
 ## Setup Check Details
 
