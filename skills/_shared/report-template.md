@@ -1,6 +1,6 @@
 # Report Template (shared)
 
-This is the single source of truth for the Markdown report format. The orchestrator (`agents/codelens-reviewer.md`) applies this template when compiling the final report from `.codelens/findings/*.json`.
+This is the single source of truth for the Markdown report format. The agent (`agents/codelens-reviewer.md`) applies this template when compiling the final report from in-context findings gathered via `ctx_search` and `ctx_execute_file` — no intermediate handoff files. (`.codelens/scan.log` may exist as a human-readable trace of the run, but it is not consumed by the agent and is not part of the data flow.)
 
 ## Report Structure
 
@@ -71,7 +71,9 @@ Every codelens report (single-domain or full) follows this structure:
 |------|------|-------|
 | Scope | <full / path / diff> | <scopeTarget or diffRange if applicable> |
 | Domains | <comma-separated requested domains> | |
-| Files scanned | <count> | from codelens:scan-meta |
+| Files scanned | <count> | from codelens:inventory |
+| Total LoC | <count> | from codelens:file-stats |
+| Tech stack | <languages> | from codelens:tech-stack |
 | Pattern extraction | ctx_batch_execute | context-mode (mandatory, auto-indexed by domain) |
 | Indexed handoff | ctx_search | reviewers query labeled sources (no disk handoff) |
 | Hotspot reads | ctx_execute_file with intent | single-pass (max 15 files, read once by scanner) |
