@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Removed stale `.codelens/findings/*.json` reference from `report-template`.** The template claimed the agent compiled findings from this handoff directory; the agent was forbidden from writing it. Rewritten to reflect the actual data flow (in-context via `ctx_search`/`ctx_execute_file`), with a parenthetical clarifying that `.codelens/scan.log` is a side artifact not part of the data flow.
 
-- **Stale "orchestrator" terminology replaced.** `setup-check.md` referenced an orchestrator role that no longer exists post-1.7.0. Replaced with "agent". (Historical mentions in `agents/codelens-reviewer.md` Section "Why single-agent" and in `docs/superpowers/plan-single-agent-collapse.md` are intentionally preserved — they describe the old architecture accurately.)
+- **Stale "orchestrator" terminology replaced.** `setup-check.md` referenced an orchestrator role that no longer exists post-1.7.0. Replaced with "agent". Historical mentions in `agents/codelens-reviewer.md` Section "Why single-agent" are intentionally preserved — they describe the old architecture accurately.
 
 - **Deleted duplicated Step 3 block in agent.** The processing template's tail (`aria-` push + closing `});` + `console.log` + summary sentence) appeared twice with contradictory closing sentences ("only the requested domains' signals extracted" vs "N domains extracted"). Pure deletion, no behavior change.
 
@@ -52,13 +52,10 @@ Anthropic's [multi-agent research system post](https://www.anthropic.com/enginee
 
 Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents): "Workflows are systems where LLMs and tools are orchestrated through predefined code paths... Workflows offer predictability and consistency for well-defined tasks." Code review is a well-defined task — the skill knows the domains and scope at dispatch time, so the deterministic filtering belongs in the dispatcher, not in agent discretion.
 
-Full design rationale: `docs/plan-single-agent-collapse.md`.
-
 ### Added
 - `agents/codelens-reviewer.md` — the single domain-aware agent (absorbs scanner + 4 reviewers + orchestrator).
 - `skills/_shared/domain-patterns.md` — reference table of rg patterns per domain. Skills copy from this to build `step2Commands`.
 - `docs/pipeline-diagram.md` — developer-facing pipeline diagram.
-- `docs/plan-single-agent-collapse.md` — design doc with research grounding.
 
 ### Removed
 - `agents/codelens-scanner.md` — folded into `codelens-reviewer.md`.

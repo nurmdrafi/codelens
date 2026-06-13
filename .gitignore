@@ -18,6 +18,4 @@ Thumbs.db
 node_modules/
 
 # Internal documentation (superpowers specs — not shipped)
-# Re-include the directory, ignore everything in it, then carve out the one shipped doc.
-docs/superpowers/*
-!docs/superpowers/plan-single-agent-collapse.md
+docs/superpowers/

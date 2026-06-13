@@ -2,55 +2,91 @@
 
 Developer reference for reasoning about the codelens review flow. Not consumed by any agent.
 
-## Architecture: single agent + structural dispatcher filtering
+## Architecture
 
-Codelens runs as **one agent** (`codelens-reviewer`). The 7 user-facing skills are **dispatchers that pre-filter everything** before the agent runs. The skill knows which domains and scope the user requested, so it constructs a literal `step2Commands` array and `step3Checks` list — the agent executes them verbatim and cannot leak to non-requested domains or out-of-scope paths.
+Codelens runs as **one agent** (`codelens-reviewer`) behind **seven thin dispatcher skills**. The skills pre-filter everything — which domains, which scope, which optional analyzers — so the agent receives a literal config and executes it verbatim.
 
-This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) guidance: code review is a *well-defined task*, so it should be a *workflow* (predefined code paths), with deterministic filtering in the dispatcher rather than agent discretion.
+This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) guidance: code review is a *well-defined task*, so it should be a *workflow* (predefined code paths) with deterministic filtering in the dispatcher, not agent discretion.
+
+### System overview
+
+The shape of a review: dispatcher skills pre-process the request, the agent runs, two artifacts land at repo root.
+
+```mermaid
+flowchart LR
+    classDef dispatch fill:#e8f0fe,stroke:#4285f4,color:#1a3a6b
+    classDef preprocess fill:#f1f3f4,stroke:#9aa0a6,color:#202124
+    classDef agent fill:#e6f4ea,stroke:#34a853,color:#0d652d
+    classDef output fill:#fef7e0,stroke:#f9ab00,color:#7a5400
+
+    subgraph S1["Dispatcher skills"]
+        R["/codelens:review"]:::dispatch
+        RS["/codelens:review-security"]:::dispatch
+        RA["/codelens:review-architecture"]:::dispatch
+        RQ["/codelens:review-quality"]:::dispatch
+        RX["/codelens:review-a11y"]:::dispatch
+        RP["/codelens:review-pr"]:::dispatch
+        H["/codelens:help"]:::dispatch
+    end
+
+    subgraph S2["Pre-processing"]
+        P["Parse args & resolve scope<br/>Build literal config"]:::preprocess
+    end
+
+    subgraph S3["Execution"]
+        A["codelens-reviewer agent<br/>single context, single pass"]:::agent
+    end
+
+    subgraph S4["Artifacts"]
+        O1["*_REPORT.md<br/>at repo root"]:::output
+        O2[".codelens/scan.log<br/>human trace"]:::output
+    end
+
+    R --> P
+    RS --> P
+    RA --> P
+    RQ --> P
+    RX --> P
+    RP --> P
+    P --> A
+    A --> O1
+    A --> O2
+```
+
+The dispatcher builds a `{scope, scopePath, outputFile, step2Commands, step2Sources, step2Queries, step3Checks, criteriaDomains}` config object and passes it to the agent. The agent cannot analyze a non-requested domain or scan outside the resolved scope — those commands aren't in the config.
+
+### Agent execution detail
+
+What happens inside the agent invocation. Each step has one job and reads each source file at most once.
 
 ```mermaid
 flowchart TD
-    subgraph dispatch["7 dispatcher skills (pre-filter everything)"]
-        A["/codelens:review [--domains list | --preset name | path]<br/>/codelens:review-security<br/>/codelens:review-architecture<br/>/codelens:review-quality<br/>/codelens:review-a11y<br/>/codelens:review-pr [range | preset]"]
-        A --> B["1. Parse args → determine domains + scope<br/>(--domains overrides --preset > default all 4)"]
-        B --> C["2. Resolve scopePath<br/>(full=. / path=string / diff=file list)"]
-        C --> D["3. Load exclusions, build EXCL flags"]
-        D --> E["4. Copy patterns from domain-patterns.md"]
-        E --> F["5. Build literal step2Commands + step2Sources + step2Queries<br/>(positional linkage: index i across all three)"]
-        F --> G{"6. Runtime detection<br/>(test -f package.json, command -v sg)"}
-        G -->|"package.json AND arch/quality in domains"| H["Append fallow dead-code + dupes"]
-        G -->|"sg installed AND domain has patterns"| I["Append ast-grep patterns per domain<br/>(dedupe by source label)"]
-        H --> J["7. Pass config to agent"]
-        I --> J
-        G -->|"neither detected"| J
-    end
+    classDef gate fill:#f1f3f4,stroke:#9aa0a6,color:#202124
+    classDef analysis fill:#e6f4ea,stroke:#34a853,color:#0d652d
+    classDef verify fill:#e8f0fe,stroke:#4285f4,color:#1a3a6b
+    classDef output fill:#fef7e0,stroke:#f9ab00,color:#7a5400
+    classDef decision fill:#fff,stroke:#9aa0a6,color:#202124
 
-    J --> K["codelens-reviewer (single agent, one context)"]
+    G0["Step 0 — ctx_stats + rg --version"]:::gate
+    G0h["Step 0.5 — confirm config fields"]:::gate
+    S1["Step 1 — Inventory<br/>ctx_batch_execute<br/>codelens:inventory · file-stats · tech-stack"]:::analysis
+    S2["Step 2 — Pattern analysis<br/>ctx_batch_execute (verbatim)<br/>ctx_search per source"]:::analysis
+    S25["Step 2.5 — Doc & CVE verification<br/>Context7 + WebSearch (on-flag)"]:::verify
+    S3["Step 3 — Hotspot deep-dive<br/>ctx_execute_file × ≤ 15 files<br/>all domains in one pass"]:::analysis
+    S4["Step 4 — Compile report<br/>severity-first, cross-domain dedup"]:::output
 
-    subgraph agent["Agent execution"]
-        K --> L["Step 0: ctx_stats + rg --version (gate)"]
-        L --> M["Step 0.5: confirm config fields present"]
-        M --> N["Step 1: Inventory<br/>ctx_batch_execute<br/>(codelens:inventory, codelens:file-stats, codelens:tech-stack)"]
-        N --> O["Step 2: Pattern Analysis<br/>EMITS config.step2Commands VERBATIM<br/>then ctx_search per source<br/>USING config.step2Queries VERBATIM"]
-        O --> P["Step 2.5: Doc/CVE verification (on-flag)<br/>Context7 + WebSearch"]
-        P --> Q["Step 3: Hotspot Deep-Dive (SINGLE-PASS, max 15 files)<br/>ONE ctx_execute_file per file<br/>Processing code: const CHECKS = step3Checks<br/>if CHECKS.includes('security') {...}<br/>intent: 'codelens:file:path'"]
-        Q --> R["Step 4: Compile Report<br/>native Write to outputFile<br/>severity-first, cross-domain dedup"]
-    end
+    G0 --> G0h
+    G0h --> S1
+    S1 --> S2
+    S2 --> S25
+    S25 --> S3
+    S3 --> S4
 
-    R --> S["Report at repo root<br/>(CODEBASE_ANALYSIS_REPORT.md, etc.)"]
-    R --> T[".codelens/scan.log<br/>(human-readable, not agent-consumed)"]
+    D{"Runtime detection<br/>package.json? sg installed?"}:::decision
+    D -->|fallow + ast-grep appended| S2
 ```
 
-**Input config object** (built by the dispatcher, consumed verbatim by the agent):
-
-```
-{scope, scopePath, outputFile,
- step2Commands: [...pre-filtered...],
- step2Sources: [...],
- step2Queries: [...],         # 1.7.1: positional query vocabulary per source
- step3Checks: [...],
- criteriaDomains: [...]}
-```
+Step 2 consumes `config.step2Queries[i]` verbatim for `ctx_search` — the agent never improvises query strings. The runtime-detection branch reflects that fallow and ast-grep commands, when present, flow through Step 2 like any other source — the agent does not special-case them.
 
 ## What lands where
 

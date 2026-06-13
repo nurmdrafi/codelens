@@ -12,7 +12,7 @@ This project evolved through four stages:
 3. **Decomposed into pipeline** — 3-phase pipeline with 6 agents (scanner + 4 reviewers + orchestrator)
 4. **Collapsed back to single agent** — current architecture: one domain-aware `codelens-reviewer` agent + 7 thin skill wrappers
 
-Stage 4 reverted to stage 2's single-agent model after Anthropic's own engineering guidance confirmed multi-agent systems use ~15× more tokens and are a poor fit for coding tasks where all agents share the same file context. The single agent preserves the one thing the monolith lacked — domain-awareness (the input `domains` array lets `/codelens:review-security` cost roughly 1/3 of a full review). See `docs/superpowers/plan-single-agent-collapse.md` for the research grounding.
+Stage 4 reverted to stage 2's single-agent model after Anthropic's own engineering guidance confirmed multi-agent systems use ~15× more tokens and are a poor fit for coding tasks where all agents share the same file context. The single agent preserves the one thing the monolith lacked — domain-awareness (the input `domains` array lets `/codelens:review-security` cost roughly 1/3 of a full review).
 
 ## Tech Stack
 
@@ -96,8 +96,6 @@ agents/
   codelens-reviewer.md     # The single domain-aware agent (scans, analyzes, compiles)
 docs/
   pipeline-diagram.md      # Developer-facing pipeline diagram (mermaid)
-  superpowers/
-    plan-single-agent-collapse.md  # Why we collapsed from 6 agents to 1 (research grounding)
 .claude/
   review-presets.json      # Default presets (pr-check, a11y-audit, full-audit)
   codelens-exclusions.json # Exclusion config (defaults + byDomain + keepInScope)
