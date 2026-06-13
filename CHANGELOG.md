@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-06-13
+
+### Added
+- **`/codelens:review --domains <list>` override.** Users can now run ad-hoc domain subsets without editing `.claude/review-presets.json`. Example: `/codelens:review --domains security,quality`. `--domains` takes precedence over `--preset`; invalid domain names fail fast with a clear error.
+
+### Fixed
+- **fallow and ast-grep are now actually wired in (`review-security`, `review-architecture`, `review-quality`, `review`, `review-pr`).** The 1.7.0 docs documented these as conditional `step2Commands`, but no skill actually appended them. Skills now detect at runtime (`test -f package.json`, `command -v sg`) and append the correct commands, sources, and queries positionally. The agent's Step 2 loop consumes them uniformly.
+
+- **Step 2 `ctx_search` queries are now explicit (`step2Queries`).** Previously the agent improvised query strings from a free-form instruction. The config schema gains a fourth positional array (`step2Queries`); skills ship authoritative per-domain vocabularies; the agent consumes them verbatim. No more improvisation.
+
+- **Index label reconciliation in `report-template`.** The Methodology table referenced `codelens:scan-meta`, which no agent step ever wrote. Replaced with three rows matching actual agent output: `codelens:inventory`, `codelens:file-stats`, `codelens:tech-stack`.
+
+- **Removed stale `.codelens/findings/*.json` reference from `report-template`.** The template claimed the agent compiled findings from this handoff directory; the agent was forbidden from writing it. Rewritten to reflect the actual data flow (in-context via `ctx_search`/`ctx_execute_file`), with a parenthetical clarifying that `.codelens/scan.log` is a side artifact not part of the data flow.
+
+- **Stale "orchestrator" terminology replaced.** `setup-check.md` referenced an orchestrator role that no longer exists post-1.7.0. Replaced with "agent". (Historical mentions in `agents/codelens-reviewer.md` Section "Why single-agent" and in `docs/superpowers/plan-single-agent-collapse.md` are intentionally preserved — they describe the old architecture accurately.)
+
+- **Deleted duplicated Step 3 block in agent.** The processing template's tail (`aria-` push + closing `});` + `console.log` + summary sentence) appeared twice with contradictory closing sentences ("only the requested domains' signals extracted" vs "N domains extracted"). Pure deletion, no behavior change.
+
+- **`/codelens:review-pr` now uses diff-scoped fallow (`--changed-since <base>`) and ast-grep (xargs expansion).** fallow's `dead-code` command confirmed supports `--changed-since`; `dupes` uses a fallback chain (`--changed-since <base>` then project-wide) pending verification. ast-grep commands use `git diff --name-only <base>...<head> | xargs sg run ...` because ast-grep takes variadic positional paths (no `--paths` flag).
+
+- **Sync-coupling comments added to `domain-patterns.md`.** Each domain section now has a `<!-- keep in sync with step2Queries -->` marker pointing to the three skills that hold its vocabulary. Future pattern edits will surface the coupling.
+
 ## [1.7.0] - 2026-06-13
 
 ### Changed
