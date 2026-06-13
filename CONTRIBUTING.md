@@ -160,7 +160,8 @@ skills/
   review-presets.json      # Default presets (pr-check, a11y-audit, full-audit)
   codelens-exclusions.json # Exclusion patterns
 docs/
-  pipeline-diagram.md          # Developer-facing pipeline diagram
-  plan-single-agent-collapse.md # Why we collapsed from 6 agents to 1
+  pipeline-diagram.md          # Developer-facing pipeline diagram (mermaid)
+  superpowers/
+    plan-single-agent-collapse.md # Why we collapsed from 6 agents to 1
 CLAUDE.md                  # Project instructions for Claude Code
 ```

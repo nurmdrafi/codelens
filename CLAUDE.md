@@ -12,7 +12,7 @@ This project evolved through four stages:
 3. **Decomposed into pipeline** — 3-phase pipeline with 6 agents (scanner + 4 reviewers + orchestrator)
 4. **Collapsed back to single agent** — current architecture: one domain-aware `codelens-reviewer` agent + 7 thin skill wrappers
 
-Stage 4 reverted to stage 2's single-agent model after Anthropic's own engineering guidance confirmed multi-agent systems use ~15× more tokens and are a poor fit for coding tasks where all agents share the same file context. The single agent preserves the one thing the monolith lacked — domain-awareness (the input `domains` array lets `/codelens:review-security` cost roughly 1/3 of a full review). See `docs/plan-single-agent-collapse.md` for the research grounding.
+Stage 4 reverted to stage 2's single-agent model after Anthropic's own engineering guidance confirmed multi-agent systems use ~15× more tokens and are a poor fit for coding tasks where all agents share the same file context. The single agent preserves the one thing the monolith lacked — domain-awareness (the input `domains` array lets `/codelens:review-security` cost roughly 1/3 of a full review). See `docs/superpowers/plan-single-agent-collapse.md` for the research grounding.
 
 ## Tech Stack
 
@@ -31,8 +31,8 @@ Single agent: codelens-reviewer (domain-aware, single-pass)
   Step 2: Pattern Analysis (ctx_batch_execute, domain-aware)
     → ONE rg command per requested domain, scoped to scopePath
     → indexed: codelens:<domain>-patterns (only requested domains)
-    → optional fallow + ast-grep batches
-    → ctx_search per domain retrieves evidence
+    → runtime-detected fallow + ast-grep batches (appended by skill when tool + project type match)
+    → ctx_search per source uses config.step2Queries verbatim (no improvisation)
   │
   Step 2.5: Doc/CVE verification (on-flag)
     → Context7 + WebSearch for suspect libraries
@@ -91,11 +91,13 @@ skills/
   _shared/
     report-template.md     # Single source of truth for Markdown report format
     setup-check.md         # Shared setup-verification logic
+    domain-patterns.md     # Per-domain rg + ast-grep command catalog (sync-coupled to step2Queries)
 agents/
   codelens-reviewer.md     # The single domain-aware agent (scans, analyzes, compiles)
 docs/
-  pipeline-diagram.md      # Developer-facing pipeline diagram
-  plan-single-agent-collapse.md  # Why we collapsed from 6 agents to 1 (research grounding)
+  pipeline-diagram.md      # Developer-facing pipeline diagram (mermaid)
+  superpowers/
+    plan-single-agent-collapse.md  # Why we collapsed from 6 agents to 1 (research grounding)
 .claude/
   review-presets.json      # Default presets (pr-check, a11y-audit, full-audit)
   codelens-exclusions.json # Exclusion config (defaults + byDomain + keepInScope)
@@ -143,7 +145,8 @@ Always list ALL tools the agent needs. The runtime grants access based on this l
 The single `codelens-reviewer` agent follows these rules:
 - **Severity-first ordering** — findings are Critical > High > Medium > Low > Informational, never grouped by domain
 - **Single-pass reading** — source files are read exactly ONCE, in Step 3's hotspot deep-dive. The processing code analyzes all requested domains simultaneously per file. Pattern evidence comes via `ctx_search` against auto-indexed Step 2 output, never re-reading source. Single-context execution makes this structural — no second agent to lose track.
-- **Domain-awareness** — only run pattern commands, Step 3 checks, and report sections for domains in the input `domains` array. Never analyze or report on non-requested domains.
+- **Domain-awareness** — only run pattern commands, Step 3 checks, and report sections for domains in the input `domains` array. Never analyze or report on non-requested domains. The agent consumes `config.step2Queries[i]` verbatim for Step 2's `ctx_search` calls — never improvises query strings.
+- **Optional tools are uniform** — when `fallow` or `ast-grep` commands are present in `config.step2Commands` (appended conditionally by the skill based on `package.json` / `sg` availability), the agent runs them like any other command. No special-casing in Step 2 or Step 3.
 - **Scope-awareness** — every `rg` command targets `scopePath` (full → repo root, path → `scopeTarget`, diff → files in diff range).
 - **rg over Glob** — always prefer `rg` (ripgrep) over `Glob` for codebase searches
 - **ctx_batch_execute** — mandatory for Steps 1-2 (batched analysis); never run sequentially via raw Bash
@@ -157,17 +160,19 @@ The single `codelens-reviewer` agent follows these rules:
 ## Common Workflows
 
 ### Add a new pattern check
-1. Add the `rg` pattern to `agents/codelens-reviewer.md` Step 2 (in the relevant domain's pattern command)
-2. Add the evaluation logic to the relevant `<*-criteria>` section in the same file
-3. If the pattern needs Step 3 deep-dive verification, add a check to the processing code template
-4. Test by running `/codelens:review-<domain>` on a codebase that has the pattern
+1. Add the `rg` pattern to `skills/_shared/domain-patterns.md` (in the relevant domain's section — note the sync-coupling comment)
+2. Add the evaluation logic to the relevant `<*-criteria>` section in `agents/codelens-reviewer.md`
+3. If the new pattern introduces signal terms not already present, add them to the domain's `step2Queries` array in `skills/review-<domain>/SKILL.md`, `skills/review/SKILL.md`, and `skills/review-pr/SKILL.md`. Positional linkage requires the same index across `step2Commands`/`step2Sources`/`step2Queries`.
+4. If the pattern needs Step 3 deep-dive verification, add a check to the processing code template in `agents/codelens-reviewer.md`
+5. Test by running `/codelens:review-<domain>` on a codebase that has the pattern
 
 ### Add a new domain
 1. Add a `<yourdomain-criteria>` block to `agents/codelens-reviewer.md`
-2. Add a pattern command for the domain in Step 2's `ctx_batch_execute` (conditionally included when the domain is requested)
-3. Add the domain's checks to Step 3's processing code template
-4. Create `skills/review-<yourdomain>/SKILL.md` as a thin dispatch wrapper
-5. Optionally add a preset to `.claude/review-presets.json`
+2. Add a pattern command for the domain in `skills/_shared/domain-patterns.md` (with a sync-coupling comment)
+3. Define the domain's `step2Queries` vocabulary array — add it to every skill that can dispatch this domain (the new single-domain skill + `skills/review/SKILL.md` + `skills/review-pr/SKILL.md`)
+4. Add the domain's checks to Step 3's processing code template in `agents/codelens-reviewer.md`
+5. Create `skills/review-<yourdomain>/SKILL.md` as a thin dispatch wrapper
+6. Optionally add a preset to `.claude/review-presets.json`
 
 ### Modify the report format
 Edit the report template at `skills/_shared/report-template.md`. The agent applies this template in Step 4 when compiling.

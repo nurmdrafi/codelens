@@ -20,14 +20,14 @@ Even with linters and CI checks, significant issues evade detection because they
 
 ## The Solution
 
-**codelens** provides six specialized AI agents working as a coordinated pipeline:
+**codelens** runs as **one domain-aware agent** (`codelens-reviewer`) behind **seven thin dispatcher skills** (`/codelens:review`, `/codelens:review-{security,architecture,quality,a11y,pr}`, `/codelens:help`). The dispatcher skills pre-filter everything — which domains, which scope, which optional analyzers — so the agent receives a literal config and executes it verbatim. Coverage spans all four review perspectives:
 
-- **Security reviewer** — OWASP Top 10 classification with Context7-powered CVE verification
-- **Architecture reviewer** — SOLID compliance, dependency analysis, pattern verification
-- **Code quality reviewer** — Complexity scoring, duplication detection, async pattern analysis
-- **Accessibility reviewer** — WCAG 2.1 AA compliance, keyboard navigation, screen reader compatibility
-- **Scanner** — Single-pass extraction that reads each file once, not four times
-- **Orchestrator** — Cross-domain deduplication and severity-first report compilation
+- **Security** — OWASP Top 10 classification with Context7-powered CVE verification
+- **Architecture** — SOLID compliance, dependency analysis, pattern verification
+- **Code quality** — Complexity scoring, duplication detection, async pattern analysis
+- **Accessibility** — WCAG 2.1 AA compliance, keyboard navigation, screen reader compatibility
+
+The single agent reads each source file exactly once and analyzes all requested domains in that one pass — no multi-agent coordination tax, no re-reading. Cross-domain deduplication and severity-first report compilation happen in the same context.
 
 ## Agent Inventory
 
@@ -168,6 +168,15 @@ Any review command accepts a path:
 - `/codelens:review src/lib/payments` — full review scoped to a path
 - `/codelens:review-security src/auth` — security review of one module
 
+### Domain Subset
+
+`/codelens:review` accepts `--domains <comma-separated-list>` for an ad-hoc subset without editing presets:
+- `/codelens:review --domains security,quality` — only security + quality sections
+- `/codelens:review --domains a11y` — single domain (equivalent to `/codelens:review-a11y`)
+- `/codelens:review --domains security,architecture src/lib` — combine with path scope
+
+Precedence: `--domains` > `--preset` > default (all 4). Validation: domain names must be from `{security, architecture, quality, a11y}` (case-insensitive); invalid names fail fast with a clear error.
+
 ### Diff Scope (PR review)
 
 `/codelens:review-pr` scans only changed files:
@@ -223,14 +232,15 @@ This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/r
 2. Resolves `scopePath` (full → `.`, path → the path, diff → file list from `git diff --name-only`)
 3. Loads exclusions, builds the `-g '!...'` flags
 4. Copies patterns from `skills/_shared/domain-patterns.md` for the requested domains only
-5. Builds a literal `step2Commands` array with scope + exclusions baked in
-6. Passes the config `{scopePath, outputFile, step2Commands, step2Sources, step3Checks, criteriaDomains}` to the agent
+5. Builds three positionally-linked arrays: `step2Commands` (literal rg commands with scope + exclusions baked in), `step2Sources` (labels), and `step2Queries` (per-domain signal vocabulary for `ctx_search`)
+6. Runtime detection: if `package.json` exists AND architecture/quality is in domains → appends fallow dead-code + dupes commands. If `sg` (ast-grep) is installed AND a requested domain has ast-grep patterns → appends those (deduped by source label when multiple domains share a pattern)
+7. Passes the config `{scopePath, outputFile, step2Commands, step2Sources, step2Queries, step3Checks, criteriaDomains}` to the agent
 
 **Agent (codelens-reviewer) — executes verbatim:**
 
 **Step 1 — Inventory:** Maps the scoped file set (`rg --files`, line counts, tech-stack) via one `ctx_batch_execute`. Uses `config.scopePath` as-is.
 
-**Step 2 — Pattern Analysis:** Emits `config.step2Commands` verbatim — does not add, remove, or modify commands. Results auto-index under `codelens:<domain>-patterns`; the agent retrieves evidence via `ctx_search`. **The agent cannot run a non-requested domain's patterns because that command isn't in the array.**
+**Step 2 — Pattern Analysis:** Emits `config.step2Commands` verbatim — does not add, remove, or modify commands. Results auto-index under `codelens:<domain>-patterns`; the agent retrieves evidence via `ctx_search` using `config.step2Queries[i]` verbatim — no improvised query strings. **The agent cannot run a non-requested domain's patterns because that command isn't in the array.**
 
 **Step 2.5 — Doc & CVE Verification (on-flag):** Context7 + WebSearch only when Step 2 flags suspect libraries. CVE lookup only if security was requested.
 
