@@ -34,7 +34,7 @@ Optional: 1 skipped, 1 OK.
 
 ## Gate (pre-dispatch check)
 
-Before dispatching any review, run these checks IN ORDER. If any REQUIRED check fails, STOP and print the error message. Do NOT dispatch the orchestrator.
+Before dispatching any review, run these checks IN ORDER. If any REQUIRED check fails, STOP and print the error message. Do NOT dispatch the agent yet.
 
 1. **ripgrep:** Run `rg --version` via Bash. If it fails: "ripgrep not installed. Install: `brew install ripgrep` (macOS) or `sudo apt install ripgrep` (Linux). Cannot proceed."
 
