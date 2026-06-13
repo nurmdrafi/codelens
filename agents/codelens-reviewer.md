@@ -75,10 +75,16 @@ You receive a configuration object from the dispatching skill. **The skill has a
     {"label": "codelens:quality-patterns", "command": "rg --no-heading -n -e '...' <scopePath> -g '!...'"}
   ],
   "step2Sources": ["codelens:security-patterns", "codelens:quality-patterns"],
+  "step2Queries": [
+    ["localStorage", "SECRET", "eval(", "innerHTML", "..."],
+    ["function ", "console.log", "TODO", "catch (", "..."]
+  ],
   "step3Checks": ["security", "quality"],
   "criteriaDomains": ["security", "quality"]
 }
 ```
+
+**Positional linkage contract:** `step2Sources[i]`, `step2Commands[i]`, and `step2Queries[i]` are positionally linked. Index `i` always refers to the same source across all three arrays. The `step2Queries[i]` array is the **authoritative query vocabulary** for `step2Sources[i]` — you consume it verbatim in Step 2's `ctx_search`, never improvise.
 
 **Structural enforcement — you do NOT decide which domains to run.** The skill has already:
 - Filtered `step2Commands` to only the requested domains' rg commands (full review → 4 commands; single-domain → 1 command; PR → preset domains only).
@@ -223,7 +229,7 @@ ctx_batch_execute(
 )
 ```
 
-Then run one `ctx_search` per source in `config.step2Sources` to retrieve match windows into context as evidence. Use queries relevant to that domain's patterns (e.g., for security: `["localStorage", "dangerouslySetInnerHTML", "SECRET TOKEN"]`).
+Then run one `ctx_search` per source in `config.step2Sources`, passing `config.step2Queries[i]` as the queries parameter (where `i` is the source's positional index). The queries are literal — NEVER improvise or substitute your own.
 
 These match windows are your primary evidence for pattern-based findings. Do NOT re-read source files for pattern verification — the indexed windows already contain file:line:match.
 
@@ -316,14 +322,6 @@ console.log(JSON.stringify(result));
 ```
 
 Only the `console.log` summary enters your context — raw file bytes stay in the sandbox. This is the single-pass mechanism: one file read → only the requested domains' signals extracted.
-  if (line.match(/aria-/))
-    result.a11y.push({ line: ln, text: t, signal: 'aria' });
-});
-
-console.log(JSON.stringify(result));
-```
-
-Only the `console.log` summary enters your context — raw file bytes stay in the sandbox. This is the single-pass mechanism: one file read → N domains extracted.
 
 ## Step 4: Compile Report
 
@@ -373,6 +371,7 @@ Optional tools: fallow (<detected|skipped>), ast-grep (<detected|skipped>)
 - NEVER skip a domain in `config.criteriaDomains` — all of them must appear in the report.
 - NEVER analyze or report on domains NOT in `config.criteriaDomains`. The `if (CHECKS.includes(...))` branches in Step 3 enforce this structurally.
 - ALWAYS emit `config.step2Commands` verbatim in Step 2's `ctx_batch_execute` call.
+- **Verbatim query consumption** — Step 2's `ctx_search` MUST consume `config.step2Queries[i]` positionally. Never invent queries, even if a source's vocabulary looks thin (ast-grep sources intentionally use pass-through vocabularies — see spec Section 2).
 - ALWAYS substitute `config.step3Checks` into Step 3's processing code as the `CHECKS` constant.
 - ALWAYS use `ctx_batch_execute` for batched analysis. Concurrency = `min(step2Commands.length, 8)`.
 - ALWAYS use `ctx_execute_file` with `intent: "codelens:file:<path>"` for hotspot reads.
