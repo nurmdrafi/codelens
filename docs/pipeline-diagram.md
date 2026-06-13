@@ -10,7 +10,7 @@ This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/r
 
 ### System overview
 
-The shape of a review: dispatcher skills pre-process the request, the agent runs, two artifacts land at repo root.
+The shape of a review: dispatcher skills pre-process the request, the agent runs, and two artifacts are produced — `*_REPORT.md` at repo root, plus `.codelens/scan.log` under the `.codelens/` directory.
 
 ```mermaid
 flowchart LR
@@ -19,7 +19,7 @@ flowchart LR
     classDef agent fill:#e6f4ea,stroke:#34a853,color:#0d652d
     classDef output fill:#fef7e0,stroke:#f9ab00,color:#7a5400
 
-    subgraph S1["Dispatcher skills"]
+    subgraph S1["🟦 Dispatcher skills"]
         R["/codelens:review"]:::dispatch
         RS["/codelens:review-security"]:::dispatch
         RA["/codelens:review-architecture"]:::dispatch
@@ -29,17 +29,17 @@ flowchart LR
         H["/codelens:help"]:::dispatch
     end
 
-    subgraph S2["Pre-processing"]
-        P["Parse args & resolve scope<br/>Build literal config"]:::preprocess
+    subgraph S2["⚙️ Pre-processing"]
+        P["⚙️ Parse args · resolve scope · build config"]:::preprocess
     end
 
-    subgraph S3["Execution"]
-        A["codelens-reviewer agent<br/>single context, single pass"]:::agent
+    subgraph S3["🟢 Execution"]
+        A["🤖 codelens-reviewer"]:::agent
     end
 
-    subgraph S4["Artifacts"]
-        O1["*_REPORT.md<br/>at repo root"]:::output
-        O2[".codelens/scan.log<br/>human trace"]:::output
+    subgraph S4["📁 Artifacts"]
+        O1["📝 *_REPORT.md"]:::output
+        O2["📋 .codelens/scan.log"]:::output
     end
 
     R --> P
@@ -57,7 +57,7 @@ The dispatcher builds a `{scope, scopePath, outputFile, step2Commands, step2Sour
 
 ### Agent execution detail
 
-What happens inside the agent invocation. Each step has one job and reads each source file at most once.
+The 🤖 `codelens-reviewer` box above expands into the seven numbered steps below (0, 0.5, 1, 2, 2.5, 3, 4), with a runtime-detection decision diamond between Inventory and Pattern analysis. Each step has one job and reads each source file at most once.
 
 ```mermaid
 flowchart TD
@@ -67,23 +67,23 @@ flowchart TD
     classDef output fill:#fef7e0,stroke:#f9ab00,color:#7a5400
     classDef decision fill:#fff,stroke:#9aa0a6,color:#202124
 
-    G0["Step 0 — ctx_stats + rg --version"]:::gate
-    G0h["Step 0.5 — confirm config fields"]:::gate
-    S1["Step 1 — Inventory<br/>ctx_batch_execute<br/>codelens:inventory · file-stats · tech-stack"]:::analysis
-    S2["Step 2 — Pattern analysis<br/>ctx_batch_execute (verbatim)<br/>ctx_search per source"]:::analysis
-    S25["Step 2.5 — Doc & CVE verification<br/>Context7 + WebSearch (on-flag)"]:::verify
-    S3["Step 3 — Hotspot deep-dive<br/>ctx_execute_file × ≤ 15 files<br/>all domains in one pass"]:::analysis
-    S4["Step 4 — Compile report<br/>severity-first, cross-domain dedup"]:::output
+    G0["🚦 ctx_stats · rg --version"]:::gate
+    G0h["✓ config fields present"]:::gate
+    S1["📊 Inventory<br/>codelens:inventory · file-stats · tech-stack"]:::analysis
+    D{"⚡ Runtime detection<br/>package.json? sg installed?"}:::decision
+    S2["🔍 Pattern analysis<br/>step2Commands → ctx_search"]:::analysis
+    S25["🛡️ Doc/CVE check<br/>Context7 · WebSearch"]:::verify
+    S3["📂 Hotspot deep-dive<br/>ctx_execute_file × ≤ 15"]:::analysis
+    S4["📝 Compile report<br/>severity-first · cross-domain dedup"]:::output
 
     G0 --> G0h
     G0h --> S1
-    S1 --> S2
+    S1 --> D
+    D -->|fallow/ast-grep appended| S2
+    D -->|neither detected| S2
     S2 --> S25
     S25 --> S3
     S3 --> S4
-
-    D{"Runtime detection<br/>package.json? sg installed?"}:::decision
-    D -->|fallow + ast-grep appended| S2
 ```
 
 Step 2 consumes `config.step2Queries[i]` verbatim for `ctx_search` — the agent never improvises query strings. The runtime-detection branch reflects that fallow and ast-grep commands, when present, flow through Step 2 like any other source — the agent does not special-case them.
@@ -104,7 +104,7 @@ Step 2 consumes `config.step2Queries[i]` verbatim for `ctx_search` — the agent
 
 2. **Single-pass source reading.** Source files are read exactly once — by Step 3's hotspot deep-dive (max 15 files). Each `ctx_execute_file` call's processing code runs only the `if (CHECKS.includes(...))` branches for requested domains. Pattern evidence comes via `ctx_search` against auto-indexed Step 2 output, never re-reading source.
 
-3. **Domain filtering is structural.** The skill builds `step2Commands`, `step2Sources`, `step2Queries`, and `step3Checks` BEFORE dispatch (all four positionally linked). The agent emits `config.step2Commands` verbatim in Step 2, consumes `config.step2Queries[i]` verbatim for `ctx_search`, and substitutes `config.step3Checks` into Step 3's processing code. The agent literally cannot run a non-requested domain — the command and the check id aren't in the config. `/codelens:review-security` runs exactly ONE rg command and ONE Step 3 branch.
+3. **Domain filtering is structural.** The skill builds `step2Commands`, `step2Sources`, `step2Queries`, and `step3Checks` BEFORE dispatch (all four arrays positionally linked by index). The agent emits `config.step2Commands` verbatim in Step 2, consumes `config.step2Queries[i]` verbatim for `ctx_search`, and substitutes `config.step3Checks` into Step 3's processing code. The agent literally cannot run a non-requested domain — the command and the check id aren't in the config. `/codelens:review-security` runs exactly ONE rg command and ONE Step 3 branch.
 
 4. **Scope filtering is structural.** The skill resolves `scopePath` upfront (full → `.`, path → the path string, diff → literal file list from `git diff --name-only`) and bakes it into every command in `step2Commands`. The agent never computes scope — it receives it.
 
