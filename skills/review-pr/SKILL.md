@@ -3,7 +3,7 @@ name: review-pr
 description: |
   Use when reviewing a pull request or commit range. Scans only the diff for changed files. Triggers: "PR review", "review pull request", "review diff", "/codelens:review-pr".
 user-invocable: true
-argument-hint: "[base..head | commit-sha | preset | help]"
+argument-hint: "[base..head | commit-sha | preset | --fallow | --ast-grep | help]"
 ---
 
 # Codelens PR Review
@@ -20,11 +20,16 @@ Reviews only the files changed in a git diff. Uses presets from `.claude/review-
 
 | Input | Behavior |
 |---|---|
-| `/codelens:review-pr` | Review `main...HEAD` using `pr-check` preset |
+| `/codelens:review-pr` | Review `main...HEAD` using `pr-check` preset (no optional tools) |
 | `/codelens:review-pr <base>..<head>` | Review specific range using `pr-check` preset |
 | `/codelens:review-pr <commit-sha>` | Review single commit |
 | `/codelens:review-pr <preset>` | Review `main...HEAD` using `<preset>` from `.claude/review-presets.json` |
+| `/codelens:review-pr --fallow` | Also run diff-scoped fallow (dead-code + duplication) |
+| `/codelens:review-pr --ast-grep` | Also run diff-scoped ast-grep structural patterns |
+| `/codelens:review-pr <preset> --fallow --ast-grep` | Flags compose with preset |
 | `/codelens:review-pr help` | Show this skill's help |
+
+**Flags compose freely with `<range>`, `<commit-sha>`, and `<preset>`** — order does not matter. Unknown flag → STOP with `Unknown flag: '--<x>'. Valid: --fallow, --ast-grep, <range>, <commit-sha>, <preset>, help`, do not dispatch.
 
 ## Execution
 
@@ -41,14 +46,16 @@ Reviews only the files changed in a git diff. Uses presets from `.claude/review-
    | quality | `codelens:quality-patterns` | `["function ", "const ", "let ", "var ", "TODO", "FIXME", "HACK", "console.log", "print(", "System.out", "any", "@ts-ignore", "eslint-disable", "catch (", "catch (e) {}"]` |
    | a11y | `codelens:a11y-patterns` | `["aria-", "role=", "tabIndex", "tabindex", "alt=\"\"", "alt=''", "onClick", "onKeyDown", "focus", "<img", "<input", "<button", "htmlFor", "for="]` |
 
-6. **Conditional fallow union (diff-scoped).** If `test -f package.json` succeeds AND (`architecture` OR `quality` is in preset.domains): run `mkdir -p .codelens`, then append the following entries to `step2Commands`/`step2Sources`/`step2Queries`. These use `--changed-since <base>` to scope to the diff:
+6. **Conditional fallow union (opt-in, diff-scoped).** If the user passed `--fallow` AND `test -f package.json` succeeds AND (`architecture` OR `quality` is in preset.domains): append the following entries to `step2Commands`/`step2Sources`/`step2Queries`. These use `--changed-since <base>` to scope to the diff. **No `-o` flag, no `mkdir -p .codelens`** — `ctx_batch_execute` captures stdout via auto-index:
 
-   - `{"label": "codelens:fallow-deadcode", "command": "npx -y fallow dead-code --changed-since <base> --format human --quiet -o .codelens/fallow-dead-code.md 2>/dev/null || true"}` → source `codelens:fallow-deadcode`, queries `["dead code", "unused", "unreferenced"]`
-   - `{"label": "codelens:fallow-dupes", "command": "npx -y fallow dupes --changed-since <base> --format human --quiet -o .codelens/fallow-dupes.md 2>/dev/null || npx -y fallow dupes --format human --quiet -o .codelens/fallow-dupes.md 2>/dev/null || true"}` → source `codelens:fallow-dupes`, queries `["duplicate", "duplication", "repeated"]`
+   - `{"label": "codelens:fallow-deadcode", "command": "npx -y fallow dead-code --changed-since <base> --format human --quiet 2>/dev/null || true"}` → source `codelens:fallow-deadcode`, queries `["dead code", "unused", "unreferenced"]`
+   - `{"label": "codelens:fallow-dupes", "command": "npx -y fallow dupes --changed-since <base> --format human --quiet 2>/dev/null || npx -y fallow dupes --format human --quiet 2>/dev/null || true"}` → source `codelens:fallow-dupes`, queries `["duplicate", "duplication", "repeated"]`
 
    The `fallow-dupes` command uses a fallback chain: try `--changed-since <base>` first (the diff-scoped form confirmed for `dead-code`); if `dupes` doesn't support `--changed-since` (unverified as of 1.7.1 — see spec Section 3), fall back to project-wide. Both paths are guarded by `2>/dev/null || true`. The scan.log will reflect which path actually ran via the command string.
 
-7. **Conditional ast-grep union (diff-scoped via xargs).** If `command -v sg >/dev/null 2>&1` succeeds, derive the ast-grep pattern set by intersecting the per-domain mapping with `preset.domains`, then dedupe by source label:
+   If `--fallow` was NOT passed, skip silently. If neither architecture nor quality is in `preset.domains`, fallow is not appended even with `--fallow` (silent no-op). If `package.json` does not exist, skip silently.
+
+7. **Conditional ast-grep union (opt-in, diff-scoped via xargs).** If the user passed `--ast-grep` AND `command -v sg >/dev/null 2>&1` succeeds, derive the ast-grep pattern set by intersecting the per-domain mapping with `preset.domains`, then dedupe by source label:
 
    | Domain | Adds patterns |
    |---|---|
@@ -90,7 +97,7 @@ Reviews only the files changed in a git diff. Uses presets from `.claude/review-
    `step2Commands`/`step2Sources`/`step2Queries` are positionally linked — same length, same index → same source.
 9. On completion: report at `PR_REVIEW_<base>-<head>.md`; scanner trace at `.codelens/scan.log`.
 
-**Structural guarantee:** `scopePath` is the resolved file list — the agent's rg commands cannot scan outside the diff. `step2Commands` starts with the preset's domains only — for `pr-check`, that's 2 rg commands (security + quality); the agent cannot run architecture or a11y because their commands aren't in the config. fallow and ast-grep commands are appended only when their detection conditions succeed AND their domain is in the preset, and they use diff-scoped invocation (`--changed-since <base>` / `xargs git diff --name-only`) so they also respect the PR range.
+**Structural guarantee:** `scopePath` is the resolved file list — the agent's rg commands cannot scan outside the diff. `step2Commands` starts with the preset's domains only — for `pr-check`, that's 2 rg commands (security + quality); the agent cannot run architecture or a11y because their commands aren't in the config. fallow and ast-grep commands are appended ONLY when the user passes `--fallow`/`--ast-grep` AND their detection conditions succeed AND their domain is in the preset, and they use diff-scoped invocation (`--changed-since <base>` / `xargs git diff --name-only`) so they also respect the PR range. Default invocation (no flags) runs neither optional tool.
 
 ## See Also
 

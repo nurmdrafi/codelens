@@ -96,20 +96,22 @@ rg --no-heading -n \
 | quality | `codelens:quality-patterns` | `quality` |
 | a11y | `codelens:a11y-patterns` | `a11y` |
 
-## Optional tools (skill adds these to step2Commands conditionally)
+## Optional tools (opt-in via `--fallow` / `--ast-grep` flags; default OFF)
 
-### fallow (TS/JS only — add to step2Commands if `package.json` exists AND `quality` or `architecture` in domains)
+Detection runs in setup-check (`[OK] fallow`, `[OK] ast-grep`) to surface availability, but **invocation requires the user to pass the flag at the skill dispatch**. Skills append these commands to `step2Commands` ONLY when both conditions hold: (a) the user passed the flag, and (b) the tool's detection gate succeeds (`package.json` for fallow, `sg --version` for ast-grep) AND a matching domain is in scope.
+
+### fallow (TS/JS only — add to step2Commands ONLY when user passes `--fallow` AND `package.json` exists AND `quality`/`architecture` in scope)
 
 ```bash
-mkdir -p .codelens && npx -y fallow dead-code --format human --quiet -o .codelens/fallow-dead-code.md 2>/dev/null || true
+npx -y fallow dead-code --format human --quiet 2>/dev/null || true
 ```
 ```bash
-npx -y fallow dupes --format human --quiet -o .codelens/fallow-dupes.md 2>/dev/null || true
+npx -y fallow dupes --format human --quiet 2>/dev/null || true
 ```
 
-Labels: `codelens:fallow-deadcode`, `codelens:fallow-dupes`.
+Labels: `codelens:fallow-deadcode`, `codelens:fallow-dupes`. **No `-o` flag** — `ctx_batch_execute`'s auto-index captures stdout directly under these labels.
 
-### ast-grep (add if `sg --version` succeeds AND corresponding domain in scope)
+### ast-grep (add ONLY when user passes `--ast-grep` AND `sg --version` succeeds AND corresponding domain in scope)
 
 | Domain(s) | Pattern | Label |
 |---|---|---|

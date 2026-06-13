@@ -28,6 +28,24 @@ Lists all codelens commands and runs the setup check.
 | `/codelens:review-pr` | PR diff review |
 | `/codelens:help` | This command |
 
+## Optional tool flags
+
+Review commands accept opt-in flags for optional analysis tools. **Default: off.** Tools only run when the user passes the flag AND the tool's detection gate succeeds (fallow requires `package.json`; ast-grep requires `sg` installed).
+
+| Flag | Tool | Effect | Applies to |
+|---|---|---|---|
+| `--fallow` | fallow | Add dead-code + duplication analysis (TS/JS projects only) | `review`, `review-architecture`, `review-quality`, `review-pr` |
+| `--ast-grep` | ast-grep (`sg`) | Add structural pattern search (imports, classes, empty catch, eval, var, dupcond) | `review`, `review-security`, `review-architecture`, `review-quality`, `review-pr` |
+
+(`review-a11y` accepts neither — a11y has no optional tools.)
+
+**Compose freely with `<path>`, `--domains`, `--preset`:**
+- `/codelens:review-quality --fallow --ast-grep` — quality review + both optional tools
+- `/codelens:review --preset full-audit --fallow` — full review + dead-code analysis
+- `/codelens:review-pr --ast-grep` — PR review + ast-grep structural patterns on the diff
+
+**Silent no-op cases** (no error, just skipped): `--fallow` on a non-TS/JS project, `--ast-grep` when `sg` is not installed, `--fallow` when no `quality`/`architecture` domain is in scope.
+
 ## Future Commands (reserved)
 
 | Command | Status |

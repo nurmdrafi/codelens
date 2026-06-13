@@ -58,9 +58,9 @@ These are hard requirements. If any is missing, abort with a clear message and s
 2. **context-mode MCP** — Sandboxed execution + persistent FTS5 index. `ctx_batch_execute` (auto-indexes), `ctx_execute_file` (single-pass file reads), `ctx_search` (retrieve indexed evidence), `ctx_index` (manual index).
 3. **Context7 MCP** — Library docs lookup for verifying flagged patterns. `resolve-library-id` + `query-docs`.
 
-Optional:
-4. **`fallow`** (TS/JS only) — Dead-code + duplication analysis. Auto-detected via `package.json`. Skipped silently otherwise.
-5. **`sg` (ast-grep)** (optional) — AST-accurate structural search for 20+ languages. Used for patterns rg can't do accurately (imports, class declarations, empty catch, eval). Skipped silently if not installed.
+Optional (opt-in — only present in `config.step2Commands` when the user passed `--fallow` / `--ast-grep` at the dispatching skill AND the tool's detection gate passed):
+4. **`fallow`** (TS/JS only) — Dead-code + duplication analysis. Skipped silently if not in the config.
+5. **`sg` (ast-grep)** (optional) — AST-accurate structural search for 20+ languages. Used for patterns rg can't do accurately (imports, class declarations, empty catch, eval). Skipped silently if not in the config.
 
 ## Input
 
@@ -363,6 +363,7 @@ Optional tools: fallow (<detected|skipped>), ast-grep (<detected|skipped>)
 <constraints>
 - NEVER read the same source file twice. Step 3's `ctx_execute_file` is the ONLY step that reads source contents. Pattern evidence comes from `ctx_search` against auto-indexed Step 2 output — never re-read source for pattern verification.
 - NEVER write `extraction.json` or any intermediate data handoff file. The index is the substrate.
+- NEVER write to `.codelens/` except `scan.log`. Do not create `fallow-dead-code.md`, `fallow-dupes.md`, `quality-patterns.txt`, `eval.txt`, `empty-catch.txt`, `var-source.txt`, `async-patterns.txt`, or any `findings/` directory. fallow/ast-grep output is captured by `ctx_batch_execute`'s auto-index — never write it to disk yourself, and never pass fallow a `-o` flag.
 - NEVER use raw `Bash` or `Grep` for pattern searches. All searches go through `ctx_batch_execute`.
 - NEVER fabricate findings. Every finding must have file path + line + evidence.
 - NEVER include token counts, tool-use counts, or runtime in the report.

@@ -31,7 +31,7 @@ Single agent: codelens-reviewer (domain-aware, single-pass)
   Step 2: Pattern Analysis (ctx_batch_execute, domain-aware)
     → ONE rg command per requested domain, scoped to scopePath
     → indexed: codelens:<domain>-patterns (only requested domains)
-    → runtime-detected fallow + ast-grep batches (appended by skill when tool + project type match)
+    → opt-in fallow + ast-grep batches (appended by skill ONLY when user passes --fallow / --ast-grep AND tool + project type match; default OFF)
     → ctx_search per source uses config.step2Queries verbatim (no improvisation)
   │
   Step 2.5: Doc/CVE verification (on-flag)
@@ -64,8 +64,8 @@ These are NOT optional. All must be installed and configured:
 
 | Dependency | Used By | Purpose |
 |---|---|---|
-| **`fallow`** | codelens-reviewer (Step 2) | TS/JS dead-code and duplication analysis. Auto-detected via `package.json`. Skipped silently for non-TS/JS projects. |
-| **`sg` (ast-grep)** | codelens-reviewer (Step 2) | AST-accurate structural code search. Supports 20+ languages. Used for imports, class declarations, empty catch blocks, eval detection. Skipped silently if not installed. |
+| **`fallow`** | codelens-reviewer (Step 2) | TS/JS dead-code and duplication analysis. **Opt-in via `--fallow` flag** (default OFF). Detection still runs in setup-check. Skipped silently when flag absent, `package.json` absent, or no `quality`/`architecture` domain in scope. |
+| **`sg` (ast-grep)** | codelens-reviewer (Step 2) | AST-accurate structural code search. **Opt-in via `--ast-grep` flag** (default OFF). Supports 20+ languages. Used for imports, class declarations, empty catch blocks, eval detection. Skipped silently when flag absent or `sg` not installed. |
 
 ## File Map
 
@@ -144,7 +144,8 @@ The single `codelens-reviewer` agent follows these rules:
 - **Severity-first ordering** — findings are Critical > High > Medium > Low > Informational, never grouped by domain
 - **Single-pass reading** — source files are read exactly ONCE, in Step 3's hotspot deep-dive. The processing code analyzes all requested domains simultaneously per file. Pattern evidence comes via `ctx_search` against auto-indexed Step 2 output, never re-reading source. Single-context execution makes this structural — no second agent to lose track.
 - **Domain-awareness** — only run pattern commands, Step 3 checks, and report sections for domains in the input `domains` array. Never analyze or report on non-requested domains. The agent consumes `config.step2Queries[i]` verbatim for Step 2's `ctx_search` calls — never improvises query strings.
-- **Optional tools are uniform** — when `fallow` or `ast-grep` commands are present in `config.step2Commands` (appended conditionally by the skill based on `package.json` / `sg` availability), the agent runs them like any other command. No special-casing in Step 2 or Step 3.
+- **Optional tools are uniform** — when `fallow` or `ast-grep` commands are present in `config.step2Commands` (appended only when the user passes `--fallow` / `--ast-grep` at the skill dispatch, AND the tool's detection gate passes), the agent runs them like any other command. No special-casing in Step 2 or Step 3. Default invocation (no flags) runs neither.
+- **`.codelens/` discipline** — the agent writes ONLY `scan.log` to `.codelens/`. It must NEVER create `fallow-dead-code.md`, `fallow-dupes.md`, `quality-patterns.txt`, `eval.txt`, `empty-catch.txt`, `var-source.txt`, `async-patterns.txt`, or any `findings/` directory. fallow/ast-grep output is captured by `ctx_batch_execute`'s auto-index — never written to disk. The fallow command MUST NOT use the `-o` flag.
 - **Scope-awareness** — every `rg` command targets `scopePath` (full → repo root, path → `scopeTarget`, diff → files in diff range).
 - **rg over Glob** — always prefer `rg` (ripgrep) over `Glob` for codebase searches
 - **ctx_batch_execute** — mandatory for Steps 1-2 (batched analysis); never run sequentially via raw Bash
@@ -176,7 +177,7 @@ The single `codelens-reviewer` agent follows these rules:
 Edit the report template at `skills/_shared/report-template.md`. The agent applies this template in Step 4 when compiling.
 
 ### Test locally
-Copy `agents/` and `skills/` into a test project's `.claude/` dir, then run `/codelens:review` variants. For TS/JS projects, install fallow (`npm i -D fallow`) to get dead-code and duplication findings.
+Copy `agents/` and `skills/` into a test project's `.claude/` dir, then run `/codelens:review` variants. fallow (`npm i -D fallow`) and ast-grep are **opt-in** — pass `--fallow` and/or `--ast-grep` to enable dead-code, duplication, and structural analysis. Default invocation runs neither.
 
 ### Release a new version
 1. Update the version header in `CHANGELOG.md` (e.g., add `## [1.2.0] - YYYY-MM-DD`)

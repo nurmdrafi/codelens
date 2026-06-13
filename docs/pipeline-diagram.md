@@ -30,7 +30,7 @@ flowchart LR
     end
 
     subgraph S2["⚙️ Pre-processing"]
-        P["⚙️ Parse args · resolve scope · build config"]:::preprocess
+        P["⚙️ Parse args (--domains/--preset/--fallow/--ast-grep/path) · resolve scope · build config"]:::preprocess
     end
 
     subgraph S3["🟢 Execution"]
@@ -57,7 +57,7 @@ The dispatcher builds a `{scope, scopePath, outputFile, step2Commands, step2Sour
 
 ### Agent execution detail
 
-The 🤖 `codelens-reviewer` box above expands into the seven numbered steps below (0, 0.5, 1, 2, 2.5, 3, 4), with a runtime-detection decision diamond between Inventory and Pattern analysis. Each step has one job and reads each source file at most once.
+The 🤖 `codelens-reviewer` box above expands into the seven numbered steps below (0, 0.5, 1, 2, 2.5, 3, 4), with an opt-in-gate decision diamond between Inventory and Pattern analysis. Each step has one job and reads each source file at most once.
 
 ```mermaid
 flowchart TD
@@ -70,7 +70,7 @@ flowchart TD
     G0["🚦 ctx_stats · rg --version"]:::gate
     G0h["✓ config fields present"]:::gate
     S1["📊 Inventory<br/>codelens:inventory · file-stats · tech-stack"]:::analysis
-    D{"⚡ Runtime detection<br/>package.json? sg installed?"}:::decision
+    D{"⚡ Opt-in gate<br/>--fallow? --ast-grep?<br/>(+ detection passes)"}:::decision
     S2["🔍 Pattern analysis<br/>step2Commands → ctx_search"]:::analysis
     S25["🛡️ Doc/CVE check<br/>Context7 · WebSearch"]:::verify
     S3["📂 Hotspot deep-dive<br/>ctx_execute_file × ≤ 15"]:::analysis
@@ -79,23 +79,35 @@ flowchart TD
     G0 --> G0h
     G0h --> S1
     S1 --> D
-    D -->|fallow/ast-grep appended| S2
-    D -->|neither detected| S2
+    D -->|--fallow and/or --ast-grep passed| S2
+    D -->|default (no flags)| S2
     S2 --> S25
     S25 --> S3
     S3 --> S4
 ```
 
-Step 2 consumes `config.step2Queries[i]` verbatim for `ctx_search` — the agent never improvises query strings. The runtime-detection branch reflects that fallow and ast-grep commands, when present, flow through Step 2 like any other source — the agent does not special-case them.
+Step 2 consumes `config.step2Queries[i]` verbatim for `ctx_search` — the agent never improvises query strings. The opt-in gate is **evaluated by the dispatcher skill, not the agent**: if the user passed `--fallow`/`--ast-grep` at invocation AND the tool's detection passes (`package.json` for fallow, `sg --version` for ast-grep), the dispatcher appends those commands to `step2Commands` before dispatch. The agent then runs them verbatim like any other source — no special-casing.
+
+**Default (no flags):** fallow and ast-grep commands are never added to `step2Commands`. Step 2 runs only the requested domains' ripgrep commands. Token cost and runtime stay minimal; `.codelens/` stays clean (only `scan.log` is written).
+
+**Opt-in (`--fallow` and/or `--ast-grep`):** the dispatcher appends fallow's dead-code/dupes commands (stdout auto-indexed — no files written to `.codelens/`) and/or the ast-grep structural-pattern commands to `step2Commands`. The agent runs them in the same `ctx_batch_execute` batch as the ripgrep sources.
+
+| Tool | Flag | Detection | Domains | Adds |
+|---|---|---|---|---|
+| [fallow](https://github.com/fallow-rs/fallow) (by Bart Waardenburg) | `--fallow` | `package.json` present | architecture, quality | dead-code + duplication (TS/JS only) |
+| [ast-grep](https://ast-grep.github.io/) (by Herrington Darkholme) | `--ast-grep` | `sg --version` succeeds | security, architecture, quality | structural patterns: imports, classes, empty catch, eval, var, dupcond |
+
+Setup-check reports each tool's availability (`[OK] fallow — available (opt-in: use --fallow)`) so users can see what *would* run if they passed the flag.
 
 ## What lands where
 
 | Artifact | Location | Notes |
 |---|---|---|
 | Pattern matches | index: `codelens:<domain>-patterns` | auto-indexed by `ctx_batch_execute` labels; one source per requested domain (filtered by the skill) |
+| fallow / ast-grep output (opt-in only) | index: `codelens:fallow-deadcode`, `codelens:fallow-dupes`, `codelens:astgrep-*` | stdout auto-indexed by `ctx_batch_execute` — **never written to disk** (no `fallow-*.md` files in `.codelens/`) |
 | Inventory + file stats | index: `codelens:inventory`, `codelens:file-stats`, `codelens:tech-stack` | auto-indexed |
 | Hotspot file contents | index: `codelens:file:<path>` | single-pass, Step 3 only; auto-indexed via `intent` param |
-| Scanner trace | `.codelens/scan.log` | human-readable, NOT agent-consumed |
+| Scanner trace | `.codelens/scan.log` | human-readable, NOT agent-consumed — the **only** file the agent writes to `.codelens/` |
 | Final report | repo root (`*_REPORT.md` or `PR_REVIEW_*.md`) | user-facing |
 
 ## Key invariants

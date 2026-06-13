@@ -4,7 +4,7 @@ description: |
   Use when running a full multi-domain code review (security + architecture + code quality + accessibility) on a codebase. Triggers: "full code review", "review everything", "audit codebase", "comprehensive review", "/codelens:review".
   For single-domain reviews, use /codelens:review-security, /codelens:review-architecture, /codelens:review-quality, or /codelens:review-a11y instead.
 user-invocable: true
-argument-hint: "[--domains <list> | --preset <name> | path | help]"
+argument-hint: "[--domains <list> | --preset <name> | --fallow | --ast-grep | path | help]"
 ---
 
 # Codelens Full Review
@@ -19,11 +19,16 @@ Dispatches the `codelens-reviewer` agent with a pre-filtered config containing t
 
 | Input | Behavior |
 |---|---|
-| `/codelens:review` | Full review on current directory (all 4 domains) |
+| `/codelens:review` | Full review on current directory (all 4 domains, no optional tools) |
 | `/codelens:review <path>` | Full review scoped to `<path>` (all 4 domains) |
 | `/codelens:review --domains <list>` | Ad-hoc domain subset (e.g. `security,quality`). Comma-separated, case-insensitive. Overrides `--preset`. |
 | `/codelens:review --preset <name>` | Review using a preset from `.claude/review-presets.json` (preset selects domains + scope) |
+| `/codelens:review --fallow` | Also run fallow dead-code + duplication analysis (TS/JS projects only; requires architecture or quality in scope) |
+| `/codelens:review --ast-grep` | Also run ast-grep structural patterns for in-scope domains |
+| `/codelens:review --preset full-audit --fallow --ast-grep` | Flags compose onto presets |
 | `/codelens:review help` | Show this skill's help |
+
+**Flags compose freely with `--domains`, `--preset`, and `<path>`** — order does not matter. Unknown flag → error `Unknown flag: '--<x>'. Valid: --domains, --preset, --fallow, --ast-grep, <path>, help`, do not dispatch.
 
 ### `--domains` flag
 
@@ -62,12 +67,12 @@ Before running, verify environment by invoking `/codelens:help` (runs the shared
    | quality | `codelens:quality-patterns` | `["function ", "const ", "let ", "var ", "TODO", "FIXME", "HACK", "console.log", "print(", "System.out", "any", "@ts-ignore", "eslint-disable", "catch (", "catch (e) {}"]` |
    | a11y | `codelens:a11y-patterns` | `["aria-", "role=", "tabIndex", "tabindex", "alt=\"\"", "alt=''", "onClick", "onKeyDown", "focus", "<img", "<input", "<button", "htmlFor", "for="]` |
 
-6. **Conditional fallow union.** If `test -f package.json` succeeds AND (`architecture` OR `quality` is in `domains`): run `mkdir -p .codelens`, then append the following two entries to `step2Commands`/`step2Sources`/`step2Queries` (positional linkage preserved):
-   - `{"label": "codelens:fallow-deadcode", "command": "npx -y fallow dead-code --format human --quiet -o .codelens/fallow-dead-code.md 2>/dev/null || true"}` → source `codelens:fallow-deadcode`, queries `["dead code", "unused", "unreferenced"]`
-   - `{"label": "codelens:fallow-dupes", "command": "npx -y fallow dupes --format human --quiet -o .codelens/fallow-dupes.md 2>/dev/null || true"}` → source `codelens:fallow-dupes`, queries `["duplicate", "duplication", "repeated"]`
+6. **Conditional fallow union (opt-in).** If the user passed `--fallow` AND `test -f package.json` succeeds AND (`architecture` OR `quality` is in `domains`): append the following two entries to `step2Commands`/`step2Sources`/`step2Queries` (positional linkage preserved). **No `-o` flag, no `mkdir -p .codelens`** — `ctx_batch_execute` captures stdout via auto-index:
+   - `{"label": "codelens:fallow-deadcode", "command": "npx -y fallow dead-code --format human --quiet 2>/dev/null || true"}` → source `codelens:fallow-deadcode`, queries `["dead code", "unused", "unreferenced"]`
+   - `{"label": "codelens:fallow-dupes", "command": "npx -y fallow dupes --format human --quiet 2>/dev/null || true"}` → source `codelens:fallow-dupes`, queries `["duplicate", "duplication", "repeated"]`
 
-   If neither architecture nor quality is in `domains`, fallow is not appended even if `package.json` exists.
-7. **Conditional ast-grep union (deduped).** If `command -v sg >/dev/null 2>&1` succeeds, derive the ast-grep pattern set from `domains`:
+   If `--fallow` was NOT passed, skip silently — do not append. If neither architecture nor quality is in `domains`, fallow is not appended even with `--fallow` (silent no-op — fallow has nothing to analyze). If `package.json` does not exist, skip silently.
+7. **Conditional ast-grep union (opt-in, deduped).** If the user passed `--ast-grep` AND `command -v sg >/dev/null 2>&1` succeeds, derive the ast-grep pattern set from `domains`:
 
    | Domain | Adds patterns |
    |---|---|
@@ -109,7 +114,7 @@ Before running, verify environment by invoking `/codelens:help` (runs the shared
    `step2Commands`/`step2Sources`/`step2Queries` are positionally linked — same length, same index → same source.
 9. On completion: report at `CODEBASE_ANALYSIS_REPORT.md`; scanner trace at `.codelens/scan.log`.
 
-**Structural guarantee:** the agent receives the literal commands for the requested domains only. For a full review, that's 4 commands. For `--domains security,quality`, that's 2 commands plus (conditionally) fallow + ast-grep entries. The agent cannot run commands for non-requested domains because their commands are not in the config.
+**Structural guarantee:** the agent receives the literal commands for the requested domains only. For a full review, that's 4 commands. For `--domains security,quality`, that's 2 commands plus (opt-in) fallow + ast-grep entries when `--fallow`/`--ast-grep` are passed. The agent cannot run commands for non-requested domains because their commands are not in the config. Default invocation (no `--fallow`/`--ast-grep`) runs neither optional tool.
 
 ## See Also
 

@@ -122,23 +122,31 @@ Sandboxed file processing that prevents context window flooding during large-sca
 
 This prints a checklist showing which tools are connected and install commands for any missing ones.
 
-### Optional Enhancements
+### Optional Enhancements (opt-in via `--fallow` / `--ast-grep`)
 
-These tools enhance specific analysis domains. codelens works without them — they're detected automatically and skipped gracefully when absent.
+codelens ships with two **optional** analysis tools that add depth to specific domains. Both are **off by default** — they only run when you pass the corresponding flag at the skill dispatch. This keeps token cost and runtime low for users who don't need them, while keeping the tools fully discoverable via setup-check output (`[OK] fallow — available (opt-in: use --fallow)`).
 
-#### fallow — TS/JS Dead-Code & Duplication
+#### fallow — TS/JS Dead-Code & Duplication (`--fallow`)
 
-Deterministic codebase intelligence for TypeScript/JavaScript. Finds unused exports, files, dependencies, circular imports, and code duplication.
+[fallow](https://github.com/fallow-rs/fallow) is an external Rust-native codebase intelligence tool by **Bart Waardenburg** (`fallow-rs` org). It produces a deterministic quality report for TypeScript/JavaScript projects — unused files, exports, dependencies, types, enum members; circular imports; code duplication (clone families); and complexity hotspots.
+
+**Why it's valuable:** ripgrep can only find what regex can match. fallow builds a real usage graph from entry points, so its dead-code and duplication findings have ~zero false positives — something no text-based tool can deliver for TS/JS.
+
+**Why it's opt-in:** fallow needs `npx` + network access on first run, only applies to TS/JS projects (presence of `package.json`), and its output adds to the analysis context. If you don't need dead-code/duplication analysis, you don't pay for it.
 
 ```bash
 npm install --save-dev fallow
 ```
 
-Only activated when a `package.json` is present. Not applicable to Python, Go, or other language projects.
+Then enable per-invocation: `/codelens:review-quality --fallow`, `/codelens:review --preset full-audit --fallow --ast-grep`, etc. Applies to `review`, `review-architecture`, `review-quality`, and `review-pr` (when architecture/quality is in scope).
 
-#### ast-grep — Structural Code Search
+#### ast-grep — Structural Code Search (`--ast-grep`)
 
-AST-aware pattern matching using tree-sitter. Supports 20+ languages. Provides zero-false-positive detection for imports, class declarations, empty catch blocks, `eval()` calls, and duplicate boolean conditions — things ripgrep can only approximate with text regex.
+[ast-grep](https://ast-grep.github.io/) is an open-source AST-based structural search, lint, and rewrite tool created by **Herrington Darkholme**. It uses tree-sitter to match code by syntax structure rather than text — the same engine that powers [CodeRabbit's](https://docs.coderabbit.ai/tools/ast-grep) AI code review and the [ast-grep-essentials](https://github.com/coderabbitai/ast-grep-essentials) rules collection.
+
+**Why it's valuable:** regex-based search can't distinguish a string literal containing `eval(` from an actual `eval()` call, or an empty `catch (e) {}` from `catch (e) { /* comment */ }`. ast-grep matches the AST node, so detection is exact. codelens uses it for imports, class declarations, empty catch blocks, `eval()` calls, `var` declarations, and duplicate boolean conditions — across 20+ languages.
+
+**Why it's opt-in:** like fallow, ast-grep adds to analysis time and context. Most users only need it for the security and quality domains where structural precision matters.
 
 ```bash
 # npm
@@ -147,6 +155,16 @@ npm install --global @ast-grep/cli
 # Homebrew (macOS/Linux)
 brew install ast-grep
 ```
+
+Then enable per-invocation: `/codelens:review-security --ast-grep`, `/codelens:review-quality --fallow --ast-grep`, etc. Applies to `review`, `review-security`, `review-architecture`, `review-quality`, and `review-pr`.
+
+#### Silent no-ops
+
+If you pass a flag but the tool can't run, codelens skips it silently (no error):
+- `--fallow` on a non-TS/JS project (no `package.json`)
+- `--ast-grep` when `sg` isn't installed
+- `--fallow` when no `quality`/`architecture` domain is in scope (e.g., `/codelens:review-a11y --fallow`)
+- `/codelens:review-a11y` accepts neither flag — a11y has no optional tools
 
 ## Commands
 
@@ -161,6 +179,22 @@ brew install ast-grep
 | `/codelens:help` | Setup check + command list |
 
 **Coming soon:** `/codelens:fix-*` for automated remediation.
+
+### Optional Tool Flags
+
+Most review commands accept two opt-in flags that enable deeper analysis tools (`--fallow`, `--ast-grep`). Both are **off by default** — see [Optional Enhancements](#optional-enhancements-opt-in-via---fallow---ast-grep) above for install instructions and what each tool finds.
+
+Flags compose freely with path, `--domains`, and `--preset`:
+
+```bash
+/codelens:review-quality --fallow --ast-grep           # quality + dead-code + structural
+/codelens:review --preset full-audit --fallow          # full review + dead-code
+/codelens:review-security --ast-grep                   # security + structural (eval, empty catch)
+/codelens:review-pr --fallow --ast-grep                # PR diff + both tools (diff-scoped)
+/codelens:review-architecture src/lib --ast-grep       # scoped + structural
+```
+
+Unknown flag → fail fast with a clear error, no dispatch.
 
 ### Path Scope
 
@@ -325,10 +359,18 @@ The `codelens-reviewer` agent needs Context7 for library verification. Install i
 - The single-pass pipeline already minimizes token cost — large repos simply take longer
 
 ### "fallow not found" or missing dead-code findings
-fallow is optional and only runs on TS/JS projects (when `package.json` exists). Install it with `npm i -D fallow`. Without it, dead-code and duplication analysis falls back to ripgrep-based heuristic patterns.
+fallow is **opt-in** (default off). Two reasons it might not run:
+1. You didn't pass `--fallow`. Re-run: `/codelens:review-quality --fallow`.
+2. `fallow` isn't installed or the project has no `package.json`. Install with `npm i -D fallow` — fallow only applies to TS/JS projects.
+
+Setup-check reports availability: `[OK] fallow — available (opt-in: use --fallow)` or `[SKIP] fallow — not a TS/JS project`.
 
 ### "ast-grep not found" or structural patterns missing
-ast-grep is optional. Without it, import analysis, class declaration detection, empty catch block detection, and eval matching use ripgrep regex (which may have false positives from strings/comments). Install with `npm i -g @ast-grep/cli` or `brew install ast-grep`.
+ast-grep is **opt-in** (default off). Two reasons it might not run:
+1. You didn't pass `--ast-grep`. Re-run: `/codelens:review-security --ast-grep`.
+2. `sg` isn't installed. Install with `npm i -g @ast-grep/cli` or `brew install ast-grep`.
+
+Without ast-grep, structural patterns (empty catch, eval, imports, class declarations) are skipped — ripgrep can't safely detect them across string literals and comments.
 
 ## FAQ
 

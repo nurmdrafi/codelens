@@ -12,10 +12,12 @@ Included by `skills/help/SKILL.md` and any skill that needs to verify the enviro
 
 ## Optional tools
 
-| Tool | Check command | Used by |
+| Tool | Check command | Opt-in flag |
 |---|---|---|
-| `fallow` | `npx fallow --version` (in TS/JS projects) | Scanner — dead-code + duplication |
-| `sg` (ast-grep) | `sg --version` | Scanner — structural code search |
+| `fallow` | `npx fallow --version` (in TS/JS projects) | `--fallow` (dead-code + duplication) |
+| `sg` (ast-grep) | `sg --version` | `--ast-grep` (structural code search) |
+
+**Detection ≠ invocation.** Setup-check reports availability so users know whether the tool *would* run. The tool actually runs only when the user passes the corresponding flag at the skill dispatch (e.g., `/codelens:review --fallow`).
 
 ## Setup-check output format
 
@@ -26,10 +28,16 @@ codelens setup check
 [OK]   context-mode MCP available
 [OK]   Context7 MCP available
 [SKIP] fallow — not a TS/JS project
-[OK]   ast-grep 0.34.0
+[OK]   ast-grep 0.34.0 — available (opt-in: use --ast-grep)
 
 All required tools present.
-Optional: 1 skipped, 1 OK.
+Optional: 1 skipped, 1 OK. (Pass --fallow / --ast-grep at dispatch to enable.)
+```
+
+When both are detected:
+```
+[OK]   fallow — available (opt-in: use --fallow)
+[OK]   ast-grep 0.34.0 — available (opt-in: use --ast-grep)
 ```
 
 ## Gate (pre-dispatch check)
