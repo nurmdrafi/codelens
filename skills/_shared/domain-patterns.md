@@ -16,6 +16,8 @@ This is the canonical source of rg pattern commands per domain. Dispatching skil
 
 ### security
 
+<!-- Keep these patterns in sync with the security step2Queries array in skills/review-security/SKILL.md, skills/review/SKILL.md, and skills/review-pr/SKILL.md. Adding/removing a regex here usually means updating the vocabulary there too. -->
+
 ```bash
 rg --no-heading -n \
   -e 'localStorage\.(getItem|setItem)' \
@@ -32,6 +34,8 @@ rg --no-heading -n \
 
 ### architecture
 
+<!-- Keep these patterns in sync with the architecture step2Queries array in skills/review-architecture/SKILL.md, skills/review/SKILL.md, and skills/review-pr/SKILL.md. Adding/removing a regex here usually means updating the vocabulary there too. -->
+
 ```bash
 rg --no-heading -n \
   -e 'React\.memo|useMemo|useCallback' \
@@ -46,6 +50,8 @@ rg --no-heading -n \
 - **Criteria block:** `<architecture-criteria>`
 
 ### quality
+
+<!-- Keep these patterns in sync with the quality step2Queries array in skills/review-quality/SKILL.md, skills/review/SKILL.md, and skills/review-pr/SKILL.md. Adding/removing a regex here usually means updating the vocabulary there too. -->
 
 ```bash
 rg --no-heading -n \
@@ -62,6 +68,8 @@ rg --no-heading -n \
 - **Criteria block:** `<code-quality-criteria>`
 
 ### a11y
+
+<!-- Keep these patterns in sync with the a11y step2Queries array in skills/review-a11y/SKILL.md, skills/review/SKILL.md, and skills/review-pr/SKILL.md. Adding/removing a regex here usually means updating the vocabulary there too. -->
 
 ```bash
 rg --no-heading -n \
