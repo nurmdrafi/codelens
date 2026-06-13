@@ -39,13 +39,16 @@ Dispatches the `codelens-reviewer` agent with a pre-filtered config containing O
        {"label": "codelens:a11y-patterns", "command": "<the literal a11y rg command with scopePath + EXCL baked in>"}
      ],
      "step2Sources": ["codelens:a11y-patterns"],
+     "step2Queries": [
+       ["aria-", "role=", "tabIndex", "tabindex", "alt=\"\"", "alt=''", "onClick", "onKeyDown", "focus", "<img", "<input", "<button", "htmlFor", "for="]
+     ],
      "step3Checks": ["a11y"],
      "criteriaDomains": ["a11y"]
    }
    ```
 6. On completion: report at `ACCESSIBILITY_REPORT.md`; scanner trace at `.codelens/scan.log`.
 
-**Structural guarantee:** `step2Commands` contains exactly ONE command (a11y). `step3Checks` is exactly `["a11y"]`. The agent cannot run security/architecture/quality checks because they are not in the config.
+**Structural guarantee:** `step2Commands` contains exactly ONE command (a11y). `step3Checks` is exactly `["a11y"]`. The agent cannot run security/architecture/quality checks because they are not in the config. a11y has no optional tools (fallow/ast-grep) — this skill never appends them.
 
 ## See Also
 
