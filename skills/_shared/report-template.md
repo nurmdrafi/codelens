@@ -69,13 +69,14 @@ Every codelens report (single-domain or full) follows this structure:
 
 | Step | Tool | Notes |
 |------|------|-------|
-| Extraction read | ctx_execute_file | .codelens/extraction.json |
-| Pattern searches | ctx_batch_execute | context-mode |
-| File deep-reads | ctx_execute_file | context-mode |
+| Scope | <full / path / diff> | <scopeTarget or diffRange if applicable> |
+| Domains | <comma-separated requested domains> | |
+| Files scanned | <count> | from codelens:scan-meta |
+| Pattern extraction | ctx_batch_execute | context-mode (mandatory, auto-indexed by domain) |
+| Indexed handoff | ctx_search | reviewers query labeled sources (no disk handoff) |
+| Hotspot reads | ctx_execute_file with intent | single-pass (max 15 files, read once by scanner) |
 | Library/CVE checks | Context7 | MCP |
-| Fallback searches | N/A | context-mode is mandatory — no fallback |
-| Total tokens | <count> | (target ~25k single-domain) |
-| Context-mode status | <available / unavailable> | from Step 0 ctx_stats check |
+| Optional tools | <fallow: detected/skipped> <ast-grep: detected/skipped> | |
 | Exclusions applied | <count> | from .claude/codelens-exclusions.json |
 ```
 

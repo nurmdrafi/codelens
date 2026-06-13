@@ -13,9 +13,7 @@ Architecture-only review: SOLID principles, dependency analysis, design patterns
 
 ## What it does
 
-1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `architecture` and writes `.codelens/extraction.json`.
-2. **Phase B — Analyze:** `architecture-reviewer` reads extraction.json and writes `.codelens/findings/architecture.json`.
-3. **Phase C — Compile:** `codelens-reviewer` applies `skills/_shared/report-template.md` and writes `ARCHITECTURE_REPORT.md` at repo root.
+Dispatches the `codelens-reviewer` agent with a pre-filtered config containing ONLY architecture pattern commands. The agent executes the commands verbatim — it cannot analyze other domains because their commands are not in the config. See `skills/_shared/domain-patterns.md` for the pattern source.
 
 ## Argument Parsing
 
@@ -27,10 +25,27 @@ Architecture-only review: SOLID principles, dependency analysis, design patterns
 
 ## Execution
 
-1. Parse args
+1. Parse args. Resolve `scopePath`: bare → `.`, `<path>` → the path string.
 2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
-3. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=architecture`
-4. On completion: report at `ARCHITECTURE_REPORT.md`; raw findings at `.codelens/findings/architecture.json`
+3. Load exclusions from `.claude/codelens-exclusions.json` (or fallback list from `agents/codelens-reviewer.md`). Build `EXCL` = the `-g '!...'` flags for `defaults` + `byDomain.architecture`, minus `keepInScope` matches.
+4. Construct the literal architecture rg command from `skills/_shared/domain-patterns.md`, substituting `<scopePath>` and `<exclusion-flags>`.
+5. Dispatch the `codelens-reviewer` agent with config:
+   ```json
+   {
+     "scope": "full" | "path",
+     "scopePath": "<resolved>",
+     "outputFile": "ARCHITECTURE_REPORT.md",
+     "step2Commands": [
+       {"label": "codelens:arch-patterns", "command": "<the literal arch rg command with scopePath + EXCL baked in>"}
+     ],
+     "step2Sources": ["codelens:arch-patterns"],
+     "step3Checks": ["architecture"],
+     "criteriaDomains": ["architecture"]
+   }
+   ```
+6. On completion: report at `ARCHITECTURE_REPORT.md`; scanner trace at `.codelens/scan.log`.
+
+**Structural guarantee:** `step2Commands` contains exactly ONE command (architecture). `step3Checks` is exactly `["architecture"]`. The agent cannot run security/quality/a11y checks because they are not in the config.
 
 ## See Also
 

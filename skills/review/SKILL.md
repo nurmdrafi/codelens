@@ -13,18 +13,15 @@ Runs all four domains (security, architecture, code quality, accessibility) agai
 
 ## What it does
 
-Invokes the codelens 3-phase pipeline:
-1. **Phase A — Scan:** `codelens-scanner` runs a single-pass extraction (rg + ast-grep + fallow) and writes `.codelens/extraction.json`.
-2. **Phase B — Analyze:** Four domain reviewers (security, architecture, code-quality, a11y) read extraction.json and write `.codelens/findings/<domain>.json` in parallel.
-3. **Phase C — Compile:** `codelens-reviewer` (orchestrator) merges findings, dedups across domains, applies `skills/_shared/report-template.md`, and writes `CODEBASE_ANALYSIS_REPORT.md` at repo root.
+Dispatches the `codelens-reviewer` agent with a pre-filtered config containing all four domains' pattern commands (or the preset's selected domains). The agent executes the commands verbatim. See `skills/_shared/domain-patterns.md` for the pattern source.
 
 ## Argument Parsing
 
 | Input | Behavior |
 |---|---|
-| `/codelens:review` | Full review on current directory |
-| `/codelens:review <path>` | Full review scoped to `<path>` |
-| `/codelens:review <preset>` | Full review using a preset from `.claude/review-presets.json` |
+| `/codelens:review` | Full review on current directory (all 4 domains) |
+| `/codelens:review <path>` | Full review scoped to `<path>` (all 4 domains) |
+| `/codelens:review <preset>` | Review using a preset from `.claude/review-presets.json` (preset selects domains + scope) |
 | `/codelens:review help` | Show this skill's help |
 
 ## Setup
@@ -33,11 +30,29 @@ Before running, verify environment by invoking `/codelens:help` (runs the shared
 
 ## Execution
 
-1. Parse args (path or preset)
-2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
-3. Dispatch to `codelens-reviewer` orchestrator agent with `mode=full`
-4. Orchestrator runs scanner → Phase B agents → compile
-5. On completion: report at `CODEBASE_ANALYSIS_REPORT.md`; raw findings in `.codelens/`
+1. Parse args. Determine `domains`:
+   - Bare or `<path>` → `["security", "architecture", "quality", "a11y"]`
+   - `<preset>` → load `domains` from `.claude/review-presets.json` (map `"all"` to all 4)
+   - For preset, also load `scope` + `scopeTarget`/`diffRange`
+2. Resolve `scopePath`: bare → `.`; `<path>` → the path string; preset path scope → `scopeTarget`.
+3. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
+4. Load exclusions from `.claude/codelens-exclusions.json` (or fallback list from `agents/codelens-reviewer.md`). Build `EXCL` = the `-g '!...'` flags for `defaults` + each requested domain's `byDomain` entry, minus `keepInScope` matches.
+5. For each domain in `domains`, construct the literal rg command from `skills/_shared/domain-patterns.md`, substituting `<scopePath>` and `EXCL`. Assemble into `step2Commands`.
+6. Dispatch the `codelens-reviewer` agent with config:
+   ```json
+   {
+     "scope": "full" | "path",
+     "scopePath": "<resolved>",
+     "outputFile": "CODEBASE_ANALYSIS_REPORT.md",
+     "step2Commands": [<one command per requested domain, full review = 4 commands>],
+     "step2Sources": [<label per requested domain>],
+     "step3Checks": [<domain id per requested domain>],
+     "criteriaDomains": [<domain name per requested domain>]
+   }
+   ```
+7. On completion: report at `CODEBASE_ANALYSIS_REPORT.md`; scanner trace at `.codelens/scan.log`.
+
+**Structural guarantee:** the agent receives the literal commands for the requested domains only. For a full review, that's 4 commands. For a preset like `a11y-audit`, that's 1 command — the agent cannot run the other 3 because their commands are not in the config.
 
 ## See Also
 

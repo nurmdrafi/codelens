@@ -31,14 +31,11 @@ Even with linters and CI checks, significant issues evade detection because they
 
 ## Agent Inventory
 
-| Agent | Phase | Purpose | File |
-|-------|-------|---------|------|
-| `codelens-scanner` | A | Single-pass extraction: ripgrep + ast-grep + fallow + hotspot deep-dive | `agents/codelens-scanner.md` |
-| `security-reviewer` | B | OWASP Top 10 analysis with Context7 CVE checks | `agents/security-reviewer.md` |
-| `architecture-reviewer` | B | SOLID compliance, dependency direction, pattern verification | `agents/architecture-reviewer.md` |
-| `code-quality-reviewer` | B | Complexity, duplication, error handling, async patterns | `agents/code-quality-reviewer.md` |
-| `a11y-reviewer` | B | WCAG 2.1 AA: keyboard nav, screen readers, ARIA, forms | `agents/a11y-reviewer.md` |
-| `codelens-reviewer` | C | Orchestrator: dispatch, dedup, compile report | `agents/codelens-reviewer.md` |
+| Agent | Purpose | File |
+|-------|---------|------|
+| `codelens-reviewer` | Single domain-aware agent: scans, analyzes all requested domains in one pass, compiles report. Absorbs the former scanner + 4 reviewers + orchestrator. | `agents/codelens-reviewer.md` |
+
+The 7 `/codelens:*` skills are thin dispatch wrappers that parse args, run the dependency gate, and invoke this single agent with a config object (`{domains, scope, scopeTarget, diffRange, outputFile}`).
 
 ## Documentation
 
@@ -99,7 +96,7 @@ winget install BurntSushi.ripgrep.MSVC
 
 ### 2. Context7 MCP
 
-Library documentation lookup for security CVE verification, deprecated API detection, architecture pattern validation, and component-library accessibility checks. Required by all Phase B reviewers (security, architecture, code-quality, a11y).
+Library documentation lookup for security CVE verification, deprecated API detection, architecture pattern validation, and component-library accessibility checks. Required by the `codelens-reviewer` agent.
 
 ```bash
 /plugin marketplace add anthropics/claude-plugins-official   # if not already added
@@ -110,7 +107,7 @@ Source: [github.com/nurmdrafi/codelens](https://github.com/nurmdrafi/codelens) |
 
 ### 3. context-mode MCP
 
-Sandboxed file processing that prevents context window flooding during large-scale analysis. Required by the scanner, all Phase B reviewers, and the orchestrator. Agents verify availability via `ctx_stats` before proceeding.
+Sandboxed file processing that prevents context window flooding during large-scale analysis. Required by the `codelens-reviewer` agent. Verified via `ctx_stats` before proceeding.
 
 ```bash
 /plugin marketplace add mksglu/context-mode
@@ -217,20 +214,31 @@ Evaluates keyboard navigation, screen reader compatibility, visual/color contras
 
 ## How It Works
 
-codelens uses a **3-phase pipeline** designed to minimize token cost:
+codelens runs as a **single agent** with **dispatcher-side filtering**. The skill you invoke (e.g., `/codelens:review-security`) knows exactly which domains and scope you requested, so it pre-filters everything before the agent runs — it builds a literal command list containing only the requested domains' patterns, scoped to your path. The agent executes that list verbatim.
 
-**Phase A — Single-Pass Scan:** The scanner walks your scoped file set using three complementary tools:
-- **ripgrep** for text pattern matching (secrets, console.log, TODO markers, ARIA attributes)
-- **ast-grep** for structural AST patterns (imports, class declarations, empty catch blocks, eval calls) — supports 20+ languages
-- **fallow** for TS/JS dead-code and duplication analysis (unused exports, circular deps, clone families)
+This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) guidance: code review is a *well-defined task*, so it should be a *workflow* (predefined code paths) with deterministic filtering in the dispatcher, not agent discretion. The agent cannot analyze a domain you didn't request or scan outside your scope — those commands simply aren't in the config it receives.
 
-For the top 10-15 largest files (complexity hotspots), it extracts structural data: function lists, JSX elements, imports, security signals. Everything is written to `.codelens/extraction.json`.
+**Dispatcher (skill) — runs before the agent:**
+1. Parses your command (`/codelens:review-security src/auth` → domains=`["security"]`, scope=`src/auth`)
+2. Resolves `scopePath` (full → `.`, path → the path, diff → file list from `git diff --name-only`)
+3. Loads exclusions, builds the `-g '!...'` flags
+4. Copies patterns from `skills/_shared/domain-patterns.md` for the requested domains only
+5. Builds a literal `step2Commands` array with scope + exclusions baked in
+6. Passes the config `{scopePath, outputFile, step2Commands, step2Sources, step3Checks, criteriaDomains}` to the agent
 
-**Phase B — Domain Analysis:** Each domain reviewer runs a pipeline integrity check first — verifying `extraction.json` exists and context-mode is available via `ctx_stats`. Then they read only the extraction data — never your source files directly. Security uses Context7 to verify library versions and check for known CVEs. Architecture verifies patterns against current best practices. Accessibility checks component-library ARIA patterns via Context7. All findings include a `status` field (`complete`, `error`, or `partial_failure`) and are written to `.codelens/findings/<domain>.json`.
+**Agent (codelens-reviewer) — executes verbatim:**
 
-**Phase C — Merge & Report:** The orchestrator reads all findings, deduplicates cross-domain issues (same file:line merged into a single row), sorts by severity, and compiles the final report. Raw findings are kept in `.codelens/`; the orchestrator compiles the final Markdown report from JSON using the shared template at `skills/_shared/report-template.md`.
+**Step 1 — Inventory:** Maps the scoped file set (`rg --files`, line counts, tech-stack) via one `ctx_batch_execute`. Uses `config.scopePath` as-is.
 
-Files are read **at most once** — the extraction data is shared across all domain reviewers, avoiding the 4x token cost of independent scanning.
+**Step 2 — Pattern Analysis:** Emits `config.step2Commands` verbatim — does not add, remove, or modify commands. Results auto-index under `codelens:<domain>-patterns`; the agent retrieves evidence via `ctx_search`. **The agent cannot run a non-requested domain's patterns because that command isn't in the array.**
+
+**Step 2.5 — Doc & CVE Verification (on-flag):** Context7 + WebSearch only when Step 2 flags suspect libraries. CVE lookup only if security was requested.
+
+**Step 3 — Hotspot Deep-Dive (single-pass):** For the top 10-15 largest files, ONE `ctx_execute_file` call per file. Processing code reads `const CHECKS = config.step3Checks` and runs `if (CHECKS.includes("security")) {...}` branches — real code, not comments. One file read → only requested domains' signals extracted.
+
+**Step 4 — Compile Report:** Native `Write` to the report file at repo root. Severity-first ordering, cross-domain dedup (same file:line merged). Only `config.criteriaDomains` appear in Executive Summary and Methodology. No token counts. A human-readable `.codelens/scan.log` trace is also written.
+
+Files are read **exactly once** — by the agent's Step 3. Pattern evidence comes via `ctx_search` against auto-indexed Step 2 output, never re-reading source. Domain and scope filtering happen in the dispatcher before the agent runs, so they cannot be silently violated.
 
 ## Report Preview
 
@@ -286,7 +294,7 @@ The pipeline requires context-mode for sandboxed extraction. Without it, agents 
 Then restart your Claude Code session.
 
 ### "Context7 MCP not connected"
-All Phase B reviewers need Context7 for library verification. Install it:
+The `codelens-reviewer` agent needs Context7 for library verification. Install it:
 ```
 /plugin install context7
 ```
@@ -327,10 +335,10 @@ Not yet — this is planned. The current design requires an interactive Claude C
 Edit the relevant domain agent in `agents/` to remove or adjust the pattern that triggered the false positive. Each agent's criteria section lists all checks — comment out or modify the ones that don't apply to your stack.
 
 **What about large monorepos?**
-Use path scope to scan specific packages: `/codelens:review packages/auth`. The single-pass scanner handles large file counts efficiently, but scanning an entire monorepo at once consumes more tokens.
+Use path scope to scan specific packages: `/codelens:review packages/auth`. The single-pass agent handles large file counts efficiently, but scanning an entire monorepo at once consumes more tokens.
 
 **Can I add custom domains?**
-Yes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the process: create a new agent file, add patterns to the scanner, register in the orchestrator's dispatch table, and add to the skill's command parsing.
+Yes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the process: add a new `<yourdomain-criteria>` block to `agents/codelens-reviewer.md`, add a pattern command to Step 2, and add a dispatch skill under `skills/review-<yourdomain>/`.
 
 ## Architecture
 
@@ -358,12 +366,7 @@ codelens/
 │       ├── report-template.md # Single source of truth for report format
 │       └── setup-check.md     # Shared setup verification
 ├── agents/
-│   ├── codelens-scanner.md    # Phase A: single-pass extractor
-│   ├── codelens-reviewer.md   # Orchestrator: Phase C + dispatch
-│   ├── security-reviewer.md   # Phase B: OWASP Top 10
-│   ├── architecture-reviewer.md   # Phase B: SOLID + patterns
-│   ├── code-quality-reviewer.md   # Phase B: complexity, duplication
-│   └── a11y-reviewer.md       # Phase B: WCAG 2.1 AA
+│   └── codelens-reviewer.md   # Single domain-aware agent (scans, analyzes, compiles)
 ├── .claude/
 │   ├── review-presets.json    # Default presets
 │   └── codelens-exclusions.json # Exclusion patterns (defaults + byDomain + keepInScope)
@@ -379,11 +382,7 @@ codelens/
 Edit `.claude/review-presets.json` in your project.
 
 ### Modify Domain Criteria
-Each domain agent is a markdown file in `agents/`. Edit the criteria section to add/remove checks:
-- `agents/security-reviewer.md` — OWASP classification, severity rules
-- `agents/architecture-reviewer.md` — SOLID, patterns, state management
-- `agents/code-quality-reviewer.md` — complexity, duplication, async
-- `agents/a11y-reviewer.md` — WCAG 2.1 AA, keyboard, ARIA
+All four domains' criteria live in `agents/codelens-reviewer.md` as `<security-criteria>`, `<architecture-criteria>`, `<code-quality-criteria>`, `<accessibility-criteria>` blocks. Edit the relevant block to add/remove checks.
 
 ### Report Format
 The report template is in `skills/_shared/report-template.md`. Modify sections, severity names, or output format.

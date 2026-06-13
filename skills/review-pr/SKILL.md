@@ -13,10 +13,8 @@ Reviews only the files changed in a git diff. Uses presets from `.claude/review-
 ## What it does
 
 1. Resolve the commit range (default: `main...HEAD`).
-2. List changed files via `git diff --name-only <base>...<head>`.
-3. **Phase A — Scan:** `codelens-scanner` extracts patterns from changed files only → `.codelens/extraction.json`.
-4. **Phase B — Analyze:** Domain reviewers per preset (default: security + code-quality) write findings JSONs.
-5. **Phase C — Compile:** `codelens-reviewer` applies `skills/_shared/report-template.md` and writes `PR_REVIEW_<base>-<head>.md` at repo root.
+2. List changed files via `git diff --name-only <base>...<head>` — this literal file list becomes `scopePath`.
+3. Dispatch the `codelens-reviewer` agent with the preset's selected domains as pre-filtered `step2Commands`, scoped to the file list. The agent executes verbatim — it cannot scan files outside the diff because `scopePath` is the resolved file list, and it cannot run non-preset domains because their commands aren't in the config.
 
 ## Argument Parsing
 
@@ -30,11 +28,26 @@ Reviews only the files changed in a git diff. Uses presets from `.claude/review-
 
 ## Execution
 
-1. Parse args (range, commit, or preset)
+1. Parse args (range, commit, or preset). Load preset `domains` from `.claude/review-presets.json` (default: `pr-check` → `["security", "quality"]`).
 2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
-3. Resolve changed files via git
-4. Dispatch to `codelens-reviewer` orchestrator with `mode=pr`, `range=<resolved>`
-5. On completion: report at `PR_REVIEW_<base>-<head>.md`
+3. Resolve the changed file list: `git diff --name-only <range>`. This literal list is `scopePath` — every rg command will target exactly these files.
+4. Load exclusions from `.claude/codelens-exclusions.json` (or fallback list from `agents/codelens-reviewer.md`). Build `EXCL` = the `-g '!...'` flags for `defaults` + each preset domain's `byDomain` entry, minus `keepInScope` matches.
+5. For each domain in the preset's `domains`, construct the literal rg command from `skills/_shared/domain-patterns.md`, substituting `<scopePath>` (the file list) and `EXCL`. Assemble into `step2Commands`.
+6. Dispatch the `codelens-reviewer` agent with config:
+   ```json
+   {
+     "scope": "diff",
+     "scopePath": "<literal file list from git diff --name-only>",
+     "outputFile": "PR_REVIEW_<base>-<head>.md",
+     "step2Commands": [<one command per preset domain>],
+     "step2Sources": [<label per preset domain>],
+     "step3Checks": [<domain id per preset domain>],
+     "criteriaDomains": [<domain name per preset domain>]
+   }
+   ```
+7. On completion: report at `PR_REVIEW_<base>-<head>.md`; scanner trace at `.codelens/scan.log`.
+
+**Structural guarantee:** `scopePath` is the resolved file list — the agent's rg commands cannot scan outside the diff. `step2Commands` contains only the preset's domains — for `pr-check`, that's 2 commands (security + quality); the agent cannot run architecture or a11y because their commands aren't in the config.
 
 ## See Also
 

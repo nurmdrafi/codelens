@@ -41,22 +41,24 @@ docs: add troubleshooting section to README
 
 ## Adding a New Pattern Check
 
-Each domain agent has a criteria section listing what it checks for. To add a new check:
+The single `codelens-reviewer` agent has a `<*-criteria>` block per domain. To add a new check:
 
-1. Open the relevant agent file:
-   - `agents/security-reviewer.md` — security patterns (OWASP)
-   - `agents/architecture-reviewer.md` — architecture patterns (SOLID)
-   - `agents/code-quality-reviewer.md` — code quality patterns
-   - `agents/accessibility-reviewer.md` — accessibility patterns (WCAG)
+1. Open `agents/codelens-reviewer.md` and find the relevant criteria block:
+   - `<security-criteria>` — security patterns (OWASP)
+   - `<architecture-criteria>` — architecture patterns (SOLID)
+   - `<code-quality-criteria>` — code quality patterns
+   - `<accessibility-criteria>` — accessibility patterns (WCAG)
 
-2. Add your check to the criteria section with:
+2. Add your check to that block with:
    - **What to check** — specific pattern or anti-pattern
    - **Why it matters** — the risk or impact
    - **Severity guidance** — when is it Critical vs Low
 
-3. If your check needs a new ripgrep pattern, add it to `agents/codelens-scanner.md` in the "All patterns to scan" section. Tag it with the correct domain.
+3. If your check needs a new ripgrep pattern, add it to the relevant domain's pattern command in Step 2's `ctx_batch_execute` block (conditionally included when the domain is requested).
 
-4. Test your change (see below).
+4. If the check needs Step 3 deep-dive verification, add a matching check to the processing code template in Step 3.
+
+5. Test your change (see below).
 
 ## Proposing a New Domain
 
@@ -64,15 +66,16 @@ To add an entirely new review domain (e.g., performance, i18n, SEO), open an iss
 
 1. **Domain name** — short identifier (e.g., `performance`, `i18n`)
 2. **Criteria checklist** — specific checks the domain covers, with severity rules
-3. **Example patterns** — 5-10 ripgrep patterns the scanner should detect
+3. **Example patterns** — 5-10 ripgrep patterns the agent should detect
 4. **Classification system** — how findings are categorized (e.g., OWASP for security, WCAG for accessibility)
 5. **Expected output** — what a typical finding looks like (title, location, evidence, impact, fix)
 
 After discussion, the domain is implemented as:
-1. New agent: `agents/<domain>-reviewer.md`
-2. Scanner patterns added to `agents/codelens-scanner.md`
-3. Domain registered in `agents/codelens-reviewer.md` dispatch table
-4. Command parsing updated in `skills/review/SKILL.md`
+1. New `<yourdomain-criteria>` block in `agents/codelens-reviewer.md`
+2. Pattern command added to Step 2's `ctx_batch_execute` (conditionally included when the domain is requested)
+3. Domain checks added to Step 3's processing code template
+4. New skill at `skills/review-<yourdomain>/SKILL.md` as a thin dispatch wrapper
+5. Optionally add a preset to `.claude/review-presets.json`
 
 ## Testing Locally
 
@@ -139,16 +142,25 @@ The `references/` directory (gitignored, not shipped with the plugin) contains t
 
 ```
 agents/
-  codelens-scanner.md      # Phase A — patterns go here
-  codelens-reviewer.md     # Orchestrator — report compilation
-  security-reviewer.md     # Security criteria + analysis
-  architecture-reviewer.md # Architecture criteria + analysis
-  code-quality-reviewer.md # Code quality criteria + analysis
-  accessibility-reviewer.md # Accessibility criteria + analysis
+  codelens-reviewer.md     # Single domain-aware agent (scans, analyzes, compiles)
+                           # Contains <security-criteria>, <architecture-criteria>,
+                           # <code-quality-criteria>, <accessibility-criteria> blocks
+                           # plus the 4-step workflow
 skills/
-  review/
-    SKILL.md               # /review command + report template
+  review/SKILL.md          # /codelens:review — full multi-domain
+  review-security/SKILL.md     # /codelens:review-security
+  review-architecture/SKILL.md # /codelens:review-architecture
+  review-quality/SKILL.md      # /codelens:review-quality
+  review-a11y/SKILL.md         # /codelens:review-a11y
+  review-pr/SKILL.md           # /codelens:review-pr (diff scope)
+  help/SKILL.md                # /codelens:help
+  _shared/report-template.md   # Report format single-source-of-truth
+  _shared/setup-check.md       # Dependency gate
 .claude/
-  review-presets.json      # Default presets
+  review-presets.json      # Default presets (pr-check, a11y-audit, full-audit)
+  codelens-exclusions.json # Exclusion patterns
+docs/
+  pipeline-diagram.md          # Developer-facing pipeline diagram
+  plan-single-agent-collapse.md # Why we collapsed from 6 agents to 1
 CLAUDE.md                  # Project instructions for Claude Code
 ```

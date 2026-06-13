@@ -13,9 +13,7 @@ Code-quality-only review: complexity, duplication, async patterns, code smells. 
 
 ## What it does
 
-1. **Phase A — Scan:** `codelens-scanner` extracts patterns tagged `quality` and writes `.codelens/extraction.json`.
-2. **Phase B — Analyze:** `code-quality-reviewer` reads extraction.json and writes `.codelens/findings/quality.json`.
-3. **Phase C — Compile:** `codelens-reviewer` applies `skills/_shared/report-template.md` and writes `CODE_QUALITY_REPORT.md` at repo root.
+Dispatches the `codelens-reviewer` agent with a pre-filtered config containing ONLY code-quality pattern commands. The agent executes the commands verbatim — it cannot analyze other domains because their commands are not in the config. See `skills/_shared/domain-patterns.md` for the pattern source.
 
 ## Argument Parsing
 
@@ -27,10 +25,27 @@ Code-quality-only review: complexity, duplication, async patterns, code smells. 
 
 ## Execution
 
-1. Parse args
+1. Parse args. Resolve `scopePath`: bare → `.`, `<path>` → the path string.
 2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
-3. Dispatch to `codelens-reviewer` orchestrator with `mode=single`, `domain=quality`
-4. On completion: report at `CODE_QUALITY_REPORT.md`; raw findings at `.codelens/findings/quality.json`
+3. Load exclusions from `.claude/codelens-exclusions.json` (or fallback list from `agents/codelens-reviewer.md`). Build `EXCL` = the `-g '!...'` flags for `defaults` + `byDomain.quality`, minus `keepInScope` matches.
+4. Construct the literal quality rg command from `skills/_shared/domain-patterns.md`, substituting `<scopePath>` and `<exclusion-flags>`.
+5. Dispatch the `codelens-reviewer` agent with config:
+   ```json
+   {
+     "scope": "full" | "path",
+     "scopePath": "<resolved>",
+     "outputFile": "CODE_QUALITY_REPORT.md",
+     "step2Commands": [
+       {"label": "codelens:quality-patterns", "command": "<the literal quality rg command with scopePath + EXCL baked in>"}
+     ],
+     "step2Sources": ["codelens:quality-patterns"],
+     "step3Checks": ["quality"],
+     "criteriaDomains": ["quality"]
+   }
+   ```
+6. On completion: report at `CODE_QUALITY_REPORT.md`; scanner trace at `.codelens/scan.log`.
+
+**Structural guarantee:** `step2Commands` contains exactly ONE command (quality). `step3Checks` is exactly `["quality"]`. The agent cannot run security/architecture/a11y checks because they are not in the config.
 
 ## See Also
 

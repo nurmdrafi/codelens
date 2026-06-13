@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-06-13
+
+### Changed
+- **Collapsed the 6-agent pipeline into a single domain-aware agent.** The former 3-phase pipeline (`codelens-scanner` + 4 domain reviewers + `codelens-reviewer` orchestrator) is replaced by one agent: `codelens-reviewer`. The 7 `/codelens:*` skills are now thin dispatch wrappers that parse args, run the dependency gate, and invoke this single agent with a config object.
+
+- **Single-pass reading is structural.** In the multi-agent pipeline, hotspot files could be read up to 5 times across a full review (scanner + 4 independent reviewer contexts), with no shared memory of what had been read. In the single agent, Step 3's hotspot deep-dive is the only source-read step, and the processing code analyzes all requested domains simultaneously per file. One file read → N domains extracted.
+
+- **Domain + scope enforcement is structural, not instructional.** The dispatching skill pre-filters everything before the agent runs:
+  - The skill builds a literal `step2Commands` array containing ONLY the requested domains' rg commands, with `scopePath` and exclusion flags already baked in.
+  - The skill resolves `scopePath` upfront: full → `.`, path → the path string, diff → the literal file list from `git diff --name-only`.
+  - The agent emits `ctx_batch_execute(commands: config.step2Commands, ...)` verbatim — there is nothing to decide, nothing to ignore.
+  - Step 3's processing code reads `config.step3Checks` and runs `if (CHECKS.includes("security")) {...}` branches — real code, not comments.
+  - The agent literally cannot analyze a non-requested domain or scan outside the scope, because the filtered command list arrives as input.
+
+- **Eliminated `extraction.json` and all disk handoff.** context-mode's persistent FTS5 index is the analysis substrate. Pattern matches auto-index under `codelens:<domain>-patterns`; hotspot file contents auto-index under `codelens:file:<path>` via the `intent` parameter. No intermediate JSON files. A human-readable `.codelens/scan.log` trace is written for inspection.
+
+- **No token counts in the report.** The Methodology section documents scope, domains, files, and tools — not cost. Terminal token reporting has proven unreliable (UAT-05 showed 69.8k claimed vs ~22k actual).
+
+- **Prompt overhead reduced ~70%.** The 6 former agents collectively loaded ~18k tokens of prompt definitions per run (6 contexts × ~3k each). The single agent loads ~5k once.
+
+### Research grounding
+Anthropic's [multi-agent research system post](https://www.anthropic.com/engineering/multi-agent-research-system): "multi-agent systems use about 15× more tokens than chats" and "some domains that require all agents to share the same context... are not a good fit for multi-agent systems today. For instance, most coding tasks involve fewer truly parallelizable tasks than research." Code review is exactly this case.
+
+Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents): "Workflows are systems where LLMs and tools are orchestrated through predefined code paths... Workflows offer predictability and consistency for well-defined tasks." Code review is a well-defined task — the skill knows the domains and scope at dispatch time, so the deterministic filtering belongs in the dispatcher, not in agent discretion.
+
+Full design rationale: `docs/plan-single-agent-collapse.md`.
+
+### Added
+- `agents/codelens-reviewer.md` — the single domain-aware agent (absorbs scanner + 4 reviewers + orchestrator).
+- `skills/_shared/domain-patterns.md` — reference table of rg patterns per domain. Skills copy from this to build `step2Commands`.
+- `docs/pipeline-diagram.md` — developer-facing pipeline diagram.
+- `docs/plan-single-agent-collapse.md` — design doc with research grounding.
+
+### Removed
+- `agents/codelens-scanner.md` — folded into `codelens-reviewer.md`.
+- `agents/security-reviewer.md`, `architecture-reviewer.md`, `code-quality-reviewer.md`, `a11y-reviewer.md` — criteria folded into `<*-criteria>` blocks in the single agent.
+- `extraction.json` — replaced by the indexed-handoff model.
+- Token counts from reports.
+
+### Preserved (unchanged from 1.6.0)
+- All 7 user-facing commands and their argument forms (`/codelens:review`, `/codelens:review-{security,architecture,quality,a11y}`, `/codelens:review-pr`, `/codelens:help`).
+- All output filenames (`CODEBASE_ANALYSIS_REPORT.md`, `SECURITY_REPORT.md`, `ARCHITECTURE_REPORT.md`, `CODE_QUALITY_REPORT.md`, `ACCESSIBILITY_REPORT.md`, `PR_REVIEW_<range>.md`).
+- All 3 presets (`pr-check`, `a11y-audit`, `full-audit`) and user-preset support.
+- `.claude/codelens-exclusions.json` exclusion semantics.
+- Dependency gate, setup-check, and report template.
+
 ## [1.6.0] - 2026-06-13
 
 ### Added

@@ -17,5 +17,5 @@ Thumbs.db
 # Dependencies
 node_modules/
 
-# Internal documentation
-docs/
+# Internal documentation (superpowers specs — not shipped)
+docs/superpowers/

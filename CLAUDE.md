@@ -6,12 +6,13 @@ codelens is an open-source Claude Code plugin for multi-domain code review. It s
 
 ## Origin
 
-This project evolved through three stages:
-1. **4 separate agents** — `security-auditor`, `architect-reviewer`, `code-reviewer`, `a11y-reviewer` (see `references/` for originals)
+This project evolved through four stages:
+1. **4 separate agents** — `security-auditor`, `architect-reviewer`, `code-reviewer`, `accessibility-auditor` (see `references/` for originals)
 2. **Merged into one** — `full-codebase-reviewer.md` combined all four into a single monolithic agent
-3. **Decomposed into pipeline** — current architecture: 3-phase pipeline with 6 agents + 1 skill
+3. **Decomposed into pipeline** — 3-phase pipeline with 6 agents (scanner + 4 reviewers + orchestrator)
+4. **Collapsed back to single agent** — current architecture: one domain-aware `codelens-reviewer` agent + 7 thin skill wrappers
 
-The pipeline design saves tokens by reading files once (Phase A) and sharing extraction data across domain reviewers (Phase B).
+Stage 4 reverted to stage 2's single-agent model after Anthropic's own engineering guidance confirmed multi-agent systems use ~15× more tokens and are a poor fit for coding tasks where all agents share the same file context. The single agent preserves the one thing the monolith lacked — domain-awareness (the input `domains` array lets `/codelens:review-security` cost roughly 1/3 of a full review). See `docs/plan-single-agent-collapse.md` for the research grounding.
 
 ## Tech Stack
 
@@ -20,20 +21,34 @@ Markdown-based agents and skills. No build step, no runtime dependencies, no com
 ## Architecture
 
 ```
-Phase A: codelens-scanner (single-pass extraction)
-  → rg pattern scan + hotspot deep-dive
-  → fallow dead-code + dupes (TS/JS only, optional)
-  → ast-grep structural scan (20+ languages, optional)
-  → writes .codelens/extraction.json
-
-Phase B: 4 domain reviewers (parallel, read extraction.json only)
-  → security-reviewer, architecture-reviewer, code-quality-reviewer, a11y-reviewer
-  → each writes .codelens/findings/<domain>.json
-
-Phase C: codelens-reviewer (orchestrator)
-  → cross-domain dedup, severity sort, report compilation
-  → writes CODEBASE_ANALYSIS_REPORT.md or PR_REVIEW_<range>.md
+Single agent: codelens-reviewer (domain-aware, single-pass)
+  receives config {domains, scope, scopeTarget, diffRange, outputFile}
+  │
+  Step 1: Inventory (ctx_batch_execute)
+    → rg --files + find/wc -l + manifest
+    → indexed: codelens:inventory, codelens:file-stats, codelens:tech-stack
+  │
+  Step 2: Pattern Analysis (ctx_batch_execute, domain-aware)
+    → ONE rg command per requested domain, scoped to scopePath
+    → indexed: codelens:<domain>-patterns (only requested domains)
+    → optional fallow + ast-grep batches
+    → ctx_search per domain retrieves evidence
+  │
+  Step 2.5: Doc/CVE verification (on-flag)
+    → Context7 + WebSearch for suspect libraries
+  │
+  Step 3: Hotspot Deep-Dive (SINGLE-PASS — only source-read step)
+    → for top 10-15 hotspots: ONE ctx_execute_file per file
+    → processing code analyzes ALL requested domains SIMULTANEOUSLY
+    → intent: "codelens:file:<path>" auto-indexes content
+  │
+  Step 4: Compile Report
+    → native Write to outputFile at repo root
+    → cross-domain dedup, severity sort
+    → also writes .codelens/scan.log (human trace, NOT agent-consumed)
 ```
+
+The 7 `/codelens:*` skills are thin dispatch wrappers: parse args → dependency gate → invoke the single agent with a config object.
 
 ## Hard Dependencies
 
@@ -41,16 +56,16 @@ These are NOT optional. All must be installed and configured:
 
 | Dependency | Used By | Purpose |
 |---|---|---|
-| **`rg` (ripgrep)** | scanner, all Phase B agents | Primary search tool. Always prefer `rg` over `grep`, `find`, or `Glob`. |
-| **context-mode MCP** | scanner, all Phase B agents, orchestrator | Sandboxed extraction (`ctx_batch_execute`, `ctx_execute_file`) prevents context flooding. Mandatory first call: `ctx_stats`. |
-| **Context7 MCP** | security, architecture, code-quality, a11y reviewers | Library version verification, CVE checks, deprecated API detection, component-library accessibility pattern checks |
+| **`rg` (ripgrep)** | codelens-reviewer (Steps 1-2) | Primary search tool. Run via `ctx_batch_execute`'s host shell. Always prefer `rg` over `grep`, `find`, or `Glob`. |
+| **context-mode MCP** | codelens-reviewer (all steps) | Sandboxed extraction (`ctx_batch_execute`, `ctx_execute_file`) + persistent FTS5 index (`ctx_search`). Mandatory first call: `ctx_stats`. |
+| **Context7 MCP** | codelens-reviewer (Step 2.5) | Library version verification, CVE checks, deprecated API detection, component-library accessibility pattern checks |
 
 ## Optional Dependencies
 
 | Dependency | Used By | Purpose |
 |---|---|---|
-| **`fallow`** | codelens-scanner | TS/JS dead-code and duplication analysis. Auto-detected via `package.json`. Skipped silently for non-TS/JS projects. |
-| **`sg` (ast-grep)** | codelens-scanner | AST-accurate structural code search. Supports 20+ languages. Used for imports, class declarations, empty catch blocks, eval detection. Skipped silently if not installed. |
+| **`fallow`** | codelens-reviewer (Step 2) | TS/JS dead-code and duplication analysis. Auto-detected via `package.json`. Skipped silently for non-TS/JS projects. |
+| **`sg` (ast-grep)** | codelens-reviewer (Step 2) | AST-accurate structural code search. Supports 20+ languages. Used for imports, class declarations, empty catch blocks, eval detection. Skipped silently if not installed. |
 
 ## File Map
 
@@ -77,12 +92,10 @@ skills/
     report-template.md     # Single source of truth for Markdown report format
     setup-check.md         # Shared setup-verification logic
 agents/
-  codelens-scanner.md      # Phase A: single-pass extraction
-  codelens-reviewer.md     # Orchestrator: dispatch + compile
-  security-reviewer.md     # Phase B: OWASP Top 10
-  architecture-reviewer.md # Phase B: SOLID, patterns, dependencies
-  code-quality-reviewer.md # Phase B: complexity, duplication, async
-  a11y-reviewer.md        # Phase B: WCAG 2.1 AA
+  codelens-reviewer.md     # The single domain-aware agent (scans, analyzes, compiles)
+docs/
+  pipeline-diagram.md      # Developer-facing pipeline diagram
+  plan-single-agent-collapse.md  # Why we collapsed from 6 agents to 1 (research grounding)
 .claude/
   review-presets.json      # Default presets (pr-check, a11y-audit, full-audit)
   codelens-exclusions.json # Exclusion config (defaults + byDomain + keepInScope)
@@ -127,33 +140,37 @@ Always list ALL tools the agent needs. The runtime grants access based on this l
 
 ## Constraints
 
-Every agent in this pipeline follows these rules:
+The single `codelens-reviewer` agent follows these rules:
 - **Severity-first ordering** — findings are Critical > High > Medium > Low > Informational, never grouped by domain
-- **Single-pass reading** — files are read at most once by the scanner; Phase B agents read extraction.json, not source files
-- **No Read on source files** — Phase B agents do NOT have `Read` in their tools array (structural enforcement). All file analysis goes through `ctx_execute_file`
+- **Single-pass reading** — source files are read exactly ONCE, in Step 3's hotspot deep-dive. The processing code analyzes all requested domains simultaneously per file. Pattern evidence comes via `ctx_search` against auto-indexed Step 2 output, never re-reading source. Single-context execution makes this structural — no second agent to lose track.
+- **Domain-awareness** — only run pattern commands, Step 3 checks, and report sections for domains in the input `domains` array. Never analyze or report on non-requested domains.
+- **Scope-awareness** — every `rg` command targets `scopePath` (full → repo root, path → `scopeTarget`, diff → files in diff range).
 - **rg over Glob** — always prefer `rg` (ripgrep) over `Glob` for codebase searches
-- **ctx_batch_execute** — mandatory for all batched analysis commands; never run sequentially via raw Bash
-- **ctx_execute_file** — mandatory for file content analysis; never load raw file contents into context via Read or Bash
-- **ctx_stats first** — Phase B agents must call `ctx_stats` as their first tool call (after reading extraction.json); skipping it is a protocol violation
+- **ctx_batch_execute** — mandatory for Steps 1-2 (batched analysis); never run sequentially via raw Bash
+- **ctx_execute_file** — mandatory for Step 3 (file content analysis); never load raw file contents via Read or Bash
+- **ctx_stats first** — the agent's first tool call must be `ctx_stats`; skipping it is a protocol violation
 - **Evidence-backed findings** — every finding must have file path, line number, code snippet
 - **Cross-domain dedup** — same file:line (±2 lines) across domains → merge into single row
-- **Exclusions honored by all agents** — every search call (scanner + Phase B reviewers) applies patterns from `.claude/codelens-exclusions.json`. `.env` and CI/CD files remain in scope via `keepInScope` rules.
+- **No token counts in report** — the Methodology section documents scope/files/tools, not cost
+- **Exclusions honored** — every search call applies patterns from `.claude/codelens-exclusions.json`. `.env` and CI/CD files remain in scope via `keepInScope` rules.
 
 ## Common Workflows
 
 ### Add a new pattern check
-1. Add the `rg` pattern to `agents/codelens-scanner.md` in the combined pattern list (tagged by domain)
-2. Add the evaluation logic to the relevant Phase B agent's criteria section
-3. Test by running `/codelens:review-<domain>` on a codebase that has the pattern
+1. Add the `rg` pattern to `agents/codelens-reviewer.md` Step 2 (in the relevant domain's pattern command)
+2. Add the evaluation logic to the relevant `<*-criteria>` section in the same file
+3. If the pattern needs Step 3 deep-dive verification, add a check to the processing code template
+4. Test by running `/codelens:review-<domain>` on a codebase that has the pattern
 
 ### Add a new domain
-1. Create `agents/<domain>-reviewer.md` with frontmatter, dependencies, criteria, analysis process, output format
-2. Add domain patterns to `agents/codelens-scanner.md` combined pattern list
-3. Register in `agents/codelens-reviewer.md` domain dispatch table
-4. Add to `skills/review-<domain>/SKILL.md` command parsing table
+1. Add a `<yourdomain-criteria>` block to `agents/codelens-reviewer.md`
+2. Add a pattern command for the domain in Step 2's `ctx_batch_execute` (conditionally included when the domain is requested)
+3. Add the domain's checks to Step 3's processing code template
+4. Create `skills/review-<yourdomain>/SKILL.md` as a thin dispatch wrapper
+5. Optionally add a preset to `.claude/review-presets.json`
 
 ### Modify the report format
-Edit the report template at `skills/_shared/report-template.md`. The orchestrator reads this template when compiling.
+Edit the report template at `skills/_shared/report-template.md`. The agent applies this template in Step 4 when compiling.
 
 ### Test locally
 Copy `agents/` and `skills/` into a test project's `.claude/` dir, then run `/codelens:review` variants. For TS/JS projects, install fallow (`npm i -D fallow`) to get dead-code and duplication findings.
