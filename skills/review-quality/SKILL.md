@@ -29,7 +29,19 @@ Dispatches the `codelens-reviewer` agent with a pre-filtered config containing O
 2. Run dependency gate per `skills/_shared/setup-check.md` Gate section. If any required dependency is missing, STOP — do not dispatch.
 3. Load exclusions from `.claude/codelens-exclusions.json` (or fallback list from `agents/codelens-reviewer.md`). Build `EXCL` = the `-g '!...'` flags for `defaults` + `byDomain.quality`, minus `keepInScope` matches.
 4. Construct the literal quality rg command from `skills/_shared/domain-patterns.md`, substituting `<scopePath>` and `<exclusion-flags>`.
-5. Dispatch the `codelens-reviewer` agent with config:
+5. **Conditional fallow (quality is in fallow's domain set).** If `test -f package.json` succeeds, run `mkdir -p .codelens` first, then append the following two commands to `step2Commands`, their labels to `step2Sources`, and their query arrays to `step2Queries` (positional linkage — all three arrays must stay aligned):
+   - `{"label": "codelens:fallow-deadcode", "command": "npx -y fallow dead-code --format human --quiet -o .codelens/fallow-dead-code.md 2>/dev/null || true"}` → source `codelens:fallow-deadcode`, queries `["dead code", "unused", "unreferenced"]`
+   - `{"label": "codelens:fallow-dupes", "command": "npx -y fallow dupes --format human --quiet -o .codelens/fallow-dupes.md 2>/dev/null || true"}` → source `codelens:fallow-dupes`, queries `["duplicate", "duplication", "repeated"]`
+
+   If `package.json` is not present (non-TS/JS project), skip silently — do not append, do not error.
+6. **Conditional ast-grep (quality domain — `emptycatch` + `eval` + `var` + `dupcond` patterns).** If `command -v sg >/dev/null 2>&1` succeeds, append the following four commands to `step2Commands`, their labels to `step2Sources`, and their query arrays to `step2Queries` (positional linkage preserved):
+   - `{"label": "codelens:astgrep-emptycatch", "command": "sg run --pattern 'catch ($_) {}' --json <scopePath> 2>/dev/null || true"}` → source `codelens:astgrep-emptycatch`, queries `["catch", "empty"]`
+   - `{"label": "codelens:astgrep-eval", "command": "sg run --pattern 'eval($$$)' --json <scopePath> 2>/dev/null || true"}` → source `codelens:astgrep-eval`, queries `["eval"]`
+   - `{"label": "codelens:astgrep-var", "command": "sg run --pattern 'var $NAME = $VALUE' --json <scopePath> 2>/dev/null || true"}` → source `codelens:astgrep-var`, queries `["var"]`
+   - `{"label": "codelens:astgrep-dupcond", "command": "sg run --pattern 'if ($COND) $$$ else if ($COND) $$$' --json <scopePath> 2>/dev/null || true"}` → source `codelens:astgrep-dupcond`, queries `["duplicate", "condition"]`
+
+   If `sg` is not installed, skip silently.
+7. Dispatch the `codelens-reviewer` agent with config:
    ```json
    {
      "scope": "full" | "path",
@@ -39,13 +51,18 @@ Dispatches the `codelens-reviewer` agent with a pre-filtered config containing O
        {"label": "codelens:quality-patterns", "command": "<the literal quality rg command with scopePath + EXCL baked in>"}
      ],
      "step2Sources": ["codelens:quality-patterns"],
+     "step2Queries": [
+       ["function ", "const ", "let ", "var ", "TODO", "FIXME", "HACK", "console.log", "print(", "System.out", "any", "@ts-ignore", "eslint-disable", "catch (", "catch (e) {}"]
+     ],
      "step3Checks": ["quality"],
      "criteriaDomains": ["quality"]
    }
    ```
-6. On completion: report at `CODE_QUALITY_REPORT.md`; scanner trace at `.codelens/scan.log`.
 
-**Structural guarantee:** `step2Commands` contains exactly ONE command (quality). `step3Checks` is exactly `["quality"]`. The agent cannot run security/architecture/a11y checks because they are not in the config.
+   When fallow/ast-grep commands were appended in steps 5-6, the dispatched config extends `step2Commands`/`step2Sources`/`step2Queries` with those entries (positional alignment preserved).
+8. On completion: report at `CODE_QUALITY_REPORT.md`; scanner trace at `.codelens/scan.log`.
+
+**Structural guarantee:** `step2Commands` starts with exactly ONE command (quality). `step3Checks` is exactly `["quality"]`. The agent cannot run security/architecture/a11y checks because they are not in the config. fallow commands are appended only when `package.json` is present; ast-grep commands only when `sg` is installed.
 
 ## See Also
 
