@@ -1,0 +1,14 @@
+{
+  "pr-check": {
+    "domains": ["security", "quality"],
+    "scope": "diff"
+  },
+  "a11y-audit": {
+    "domains": ["a11y"],
+    "scope": "full"
+  },
+  "full-audit": {
+    "domains": ["all"],
+    "scope": "full"
+  }
+}
