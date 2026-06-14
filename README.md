@@ -8,6 +8,8 @@
 
 Built on a token-efficient 3-phase pipeline that reads files once and shares extraction data across all domain reviewers.
 
+> **v0.0.1 (beta)** — architecture rebuild for token efficiency. `/codelens:help` → `/codelens:doctor`. `--fallow` and `--ast-grep` flags dropped. See `CHANGELOG.md` for full breaking-change list.
+
 > **We want contributors!** If you care about code quality, security, or accessibility, please consider [submitting a PR](CONTRIBUTING.md). Every new pattern check helps developers ship better software.
 
 ---
@@ -20,7 +22,7 @@ Even with linters and CI checks, significant issues evade detection because they
 
 ## The Solution
 
-**codelens** runs as **one domain-aware agent** (`codelens-reviewer`) behind **seven thin dispatcher skills** (`/codelens:review`, `/codelens:review-{security,architecture,quality,a11y,pr}`, `/codelens:help`). The dispatcher skills pre-filter everything — which domains, which scope, which optional analyzers — so the agent receives a literal config and executes it verbatim. Coverage spans all four review perspectives:
+**codelens** runs as **one domain-aware agent** (`codelens-reviewer`) behind **seven thin dispatcher skills** (`/codelens:review`, `/codelens:review-{security,architecture,quality,a11y,pr}`, `/codelens:doctor`). The dispatcher skills pre-filter everything — which domains, which scope — so the agent receives a literal config and executes it verbatim. Coverage spans all four review perspectives:
 
 - **Security** — OWASP Top 10 classification with Context7-powered CVE verification
 - **Architecture** — SOLID compliance, dependency analysis, pattern verification
@@ -69,8 +71,8 @@ Requires [Claude Code](https://claude.ai/code) CLI, desktop app, or IDE extensio
 # PR review — security + code quality on your unmerged changes
 /codelens:review-pr
 
-# Setup check + list all commands
-/codelens:help
+# Setup diagnostics + fix commands
+/codelens:doctor
 ```
 
 After scanning, codelens writes a domain-specific report (`SECURITY_REPORT.md`, `ARCHITECTURE_REPORT.md`, `CODE_QUALITY_REPORT.md`, `ACCESSIBILITY_REPORT.md`) for standalone runs, `CODEBASE_ANALYSIS_REPORT.md` for full reviews, or `PR_REVIEW_<range>.md` for PR reviews — all at your project root with findings organized by severity.
@@ -117,54 +119,10 @@ Sandboxed file processing that prevents context window flooding during large-sca
 ### Verify installation
 
 ```
-/codelens:help
+/codelens:doctor
 ```
 
-This prints a checklist showing which tools are connected and install commands for any missing ones.
-
-### Optional Enhancements (opt-in via `--fallow` / `--ast-grep`)
-
-codelens ships with two **optional** analysis tools that add depth to specific domains. Both are **off by default** — they only run when you pass the corresponding flag at the skill dispatch. This keeps token cost and runtime low for users who don't need them, while keeping the tools fully discoverable via setup-check output (`[OK] fallow — available (opt-in: use --fallow)`).
-
-#### fallow — TS/JS Dead-Code & Duplication (`--fallow`)
-
-[fallow](https://github.com/fallow-rs/fallow) is an external Rust-native codebase intelligence tool by **Bart Waardenburg** (`fallow-rs` org). It produces a deterministic quality report for TypeScript/JavaScript projects — unused files, exports, dependencies, types, enum members; circular imports; code duplication (clone families); and complexity hotspots.
-
-**Why it's valuable:** ripgrep can only find what regex can match. fallow builds a real usage graph from entry points, so its dead-code and duplication findings have ~zero false positives — something no text-based tool can deliver for TS/JS.
-
-**Why it's opt-in:** fallow needs `npx` + network access on first run, only applies to TS/JS projects (presence of `package.json`), and its output adds to the analysis context. If you don't need dead-code/duplication analysis, you don't pay for it.
-
-```bash
-npm install --save-dev fallow
-```
-
-Then enable per-invocation: `/codelens:review-quality --fallow`, `/codelens:review --preset full-audit --fallow --ast-grep`, etc. Applies to `review`, `review-architecture`, `review-quality`, and `review-pr` (when architecture/quality is in scope).
-
-#### ast-grep — Structural Code Search (`--ast-grep`)
-
-[ast-grep](https://ast-grep.github.io/) is an open-source AST-based structural search, lint, and rewrite tool created by **Herrington Darkholme**. It uses tree-sitter to match code by syntax structure rather than text — the same engine that powers [CodeRabbit's](https://docs.coderabbit.ai/tools/ast-grep) AI code review and the [ast-grep-essentials](https://github.com/coderabbitai/ast-grep-essentials) rules collection.
-
-**Why it's valuable:** regex-based search can't distinguish a string literal containing `eval(` from an actual `eval()` call, or an empty `catch (e) {}` from `catch (e) { /* comment */ }`. ast-grep matches the AST node, so detection is exact. codelens uses it for imports, class declarations, empty catch blocks, `eval()` calls, `var` declarations, and duplicate boolean conditions — across 20+ languages.
-
-**Why it's opt-in:** like fallow, ast-grep adds to analysis time and context. Most users only need it for the security and quality domains where structural precision matters.
-
-```bash
-# npm
-npm install --global @ast-grep/cli
-
-# Homebrew (macOS/Linux)
-brew install ast-grep
-```
-
-Then enable per-invocation: `/codelens:review-security --ast-grep`, `/codelens:review-quality --fallow --ast-grep`, etc. Applies to `review`, `review-security`, `review-architecture`, `review-quality`, and `review-pr`.
-
-#### Silent no-ops
-
-If you pass a flag but the tool can't run, codelens skips it silently (no error):
-- `--fallow` on a non-TS/JS project (no `package.json`)
-- `--ast-grep` when `sg` isn't installed
-- `--fallow` when no `quality`/`architecture` domain is in scope (e.g., `/codelens:review-a11y --fallow`)
-- `/codelens:review-a11y` accepts neither flag — a11y has no optional tools
+This runs setup diagnostics and prints `[OK]`/`[WARN]`/`[FAIL]` status for each dependency, with concrete fix commands for anything missing or misconfigured.
 
 ## Commands
 
@@ -176,25 +134,9 @@ If you pass a flag but the tool can't run, codelens skips it silently (no error)
 | `/codelens:review-quality` | Code quality-only review |
 | `/codelens:review-a11y` | Accessibility-only review |
 | `/codelens:review-pr` | PR diff review |
-| `/codelens:help` | Setup check + command list |
+| `/codelens:doctor` | Setup diagnostics + fix commands |
 
 **Coming soon:** `/codelens:fix-*` for automated remediation.
-
-### Optional Tool Flags
-
-Most review commands accept two opt-in flags that enable deeper analysis tools (`--fallow`, `--ast-grep`). Both are **off by default** — see [Optional Enhancements](#optional-enhancements-opt-in-via---fallow---ast-grep) above for install instructions and what each tool finds.
-
-Flags compose freely with path, `--domains`, and `--preset`:
-
-```bash
-/codelens:review-quality --fallow --ast-grep           # quality + dead-code + structural
-/codelens:review --preset full-audit --fallow          # full review + dead-code
-/codelens:review-security --ast-grep                   # security + structural (eval, empty catch)
-/codelens:review-pr --fallow --ast-grep                # PR diff + both tools (diff-scoped)
-/codelens:review-architecture src/lib --ast-grep       # scoped + structural
-```
-
-Unknown flag → fail fast with a clear error, no dispatch.
 
 ### Path Scope
 
@@ -267,8 +209,7 @@ This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/r
 3. Loads exclusions, builds the `-g '!...'` flags
 4. Copies patterns from `skills/_shared/domain-patterns.md` for the requested domains only
 5. Builds three positionally-linked arrays: `step2Commands` (literal rg commands with scope + exclusions baked in), `step2Sources` (labels), and `step2Queries` (per-domain signal vocabulary for `ctx_search`)
-6. Runtime detection: if `package.json` exists AND architecture/quality is in domains → appends fallow dead-code + dupes commands. If `sg` (ast-grep) is installed AND a requested domain has ast-grep patterns → appends those (deduped by source label when multiple domains share a pattern)
-7. Passes the config `{scopePath, outputFile, step2Commands, step2Sources, step2Queries, step3Checks, criteriaDomains}` to the agent
+6. Passes the config `{scopePath, outputFile, step2Commands, step2Sources, step2Queries, step3Checks, criteriaDomains}` to the agent
 
 **Agent (codelens-reviewer) — executes verbatim:**
 
@@ -358,20 +299,6 @@ The `codelens-reviewer` agent needs Context7 for library verification. Install i
 - Use diff scope for PRs: `/codelens:review-pr` only scans changed files
 - The single-pass pipeline already minimizes token cost — large repos simply take longer
 
-### "fallow not found" or missing dead-code findings
-fallow is **opt-in** (default off). Two reasons it might not run:
-1. You didn't pass `--fallow`. Re-run: `/codelens:review-quality --fallow`.
-2. `fallow` isn't installed or the project has no `package.json`. Install with `npm i -D fallow` — fallow only applies to TS/JS projects.
-
-Setup-check reports availability: `[OK] fallow — available (opt-in: use --fallow)` or `[SKIP] fallow — not a TS/JS project`.
-
-### "ast-grep not found" or structural patterns missing
-ast-grep is **opt-in** (default off). Two reasons it might not run:
-1. You didn't pass `--ast-grep`. Re-run: `/codelens:review-security --ast-grep`.
-2. `sg` isn't installed. Install with `npm i -g @ast-grep/cli` or `brew install ast-grep`.
-
-Without ast-grep, structural patterns (empty catch, eval, imports, class declarations) are skipped — ripgrep can't safely detect them across string literals and comments.
-
 ## FAQ
 
 **Does it work on non-JS/TS codebases?**
@@ -412,8 +339,8 @@ codelens/
 │   │   └── SKILL.md           # /codelens:review-a11y
 │   ├── review-pr/
 │   │   └── SKILL.md           # /codelens:review-pr
-│   ├── help/
-│   │   └── SKILL.md           # /codelens:help
+│   ├── doctor/
+│   │   └── SKILL.md           # /codelens:doctor
 │   └── _shared/
 │       ├── report-template.md # Single source of truth for report format
 │       └── setup-check.md     # Shared setup verification
