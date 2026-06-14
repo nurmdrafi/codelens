@@ -1,8 +1,9 @@
 # Reference/planning docs (not shipped with plugin)
 references/
 
-# Working directory created during review runs
-.codelens-review/
+# codelens review history (per-user, not plugin source)
+.codelens/reviews.json
+.codelens/scan.log
 
 # OS files
 .DS_Store
