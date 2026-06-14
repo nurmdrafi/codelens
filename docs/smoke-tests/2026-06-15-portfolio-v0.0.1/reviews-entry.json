@@ -1,0 +1,17 @@
+[
+  {
+    "date": "2026-06-15",
+    "scope": "path",
+    "scopeTarget": "/home/nurmdrafi/Desktop/MyProject/my-portfolio",
+    "domains": ["security", "architecture", "quality", "a11y"],
+    "filesScanned": 45,
+    "findings": {
+      "critical": 1,
+      "high": 3,
+      "medium": 7,
+      "low": 5,
+      "informational": 7
+    },
+    "reportPath": "/home/nurmdrafi/Desktop/MyProject/my-portfolio/CODEBASE_ANALYSIS_REPORT.md"
+  }
+]
