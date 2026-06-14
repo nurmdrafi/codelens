@@ -204,26 +204,24 @@ codelens runs as a **single agent** with **dispatcher-side filtering**. The skil
 This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) guidance: code review is a *well-defined task*, so it should be a *workflow* (predefined code paths) with deterministic filtering in the dispatcher, not agent discretion. The agent cannot analyze a domain you didn't request or scan outside your scope — those commands simply aren't in the config it receives.
 
 **Dispatcher (skill) — runs before the agent:**
-1. Parses your command (`/codelens:review-security src/auth` → domains=`["security"]`, scope=`src/auth`)
-2. Resolves `scopePath` (full → `.`, path → the path, diff → file list from `git diff --name-only`)
-3. Loads exclusions, builds the `-g '!...'` flags
-4. Copies patterns from `skills/_shared/domain-patterns.md` for the requested domains only
-5. Builds three positionally-linked arrays: `step2Commands` (literal rg commands with scope + exclusions baked in), `step2Sources` (labels), and `step2Queries` (per-domain signal vocabulary for `ctx_search`)
-6. Passes the config `{scopePath, outputFile, step2Commands, step2Sources, step2Queries, step3Checks, criteriaDomains}` to the agent
+1. Parses your command (`/codelens:review-security src/auth` → domains=`["security"]`, scope=`path`, scopeTarget=`src/auth`)
+2. Builds the minimal config `{domains, scope, scopeTarget, outputFile}` and dispatches the agent
 
-**Agent (codelens-reviewer) — executes verbatim:**
+**Agent (codelens-reviewer) — single continuous turn:**
 
-**Step 1 — Inventory:** Maps the scoped file set (`rg --files`, line counts, tech-stack) via one `ctx_batch_execute`. Uses `config.scopePath` as-is.
+**Phase 0:** `ctx_stats` confirms context-mode MCP is loaded.
 
-**Step 2 — Pattern Analysis:** Emits `config.step2Commands` verbatim — does not add, remove, or modify commands. Results auto-index under `codelens:<domain>-patterns`; the agent retrieves evidence via `ctx_search` using `config.step2Queries[i]` verbatim — no improvised query strings. **The agent cannot run a non-requested domain's patterns because that command isn't in the array.**
+**Phase 1 — Inventory:** Maps the scoped file set (`rg --files`, line counts, tech-stack) via one `ctx_batch_execute`. Resolves `scopePath` from `config.scope`.
 
-**Step 2.5 — Doc & CVE Verification (on-flag):** Context7 + WebSearch only when Step 2 flags suspect libraries. CVE lookup only if security was requested.
+**Phase 2 — Pattern Analysis:** Reads `.claude/codelens-exclusions.json` once and bakes exclusions into `-g '!...'` flags. Runs the per-domain rg commands **inlined in the agent body** — filtered by `config.domains`. Results auto-indexed; previews enter context, raw bytes stay out.
 
-**Step 3 — Hotspot Deep-Dive (single-pass):** For the top 10-15 largest files, ONE `ctx_execute_file` call per file. Processing code reads `const CHECKS = config.step3Checks` and runs `if (CHECKS.includes("security")) {...}` branches — real code, not comments. One file read → only requested domains' signals extracted.
+**Phase 2.5 — Doc & CVE Verification (on-flag):** Context7 + WebSearch only when Phase 2 flags suspect libraries. Skipped entirely if nothing flag-worthy was found.
 
-**Step 4 — Compile Report:** Native `Write` to the report file at repo root. Severity-first ordering, cross-domain dedup (same file:line merged). Only `config.criteriaDomains` appear in Executive Summary and Methodology. No token counts. A human-readable `.codelens/scan.log` trace is also written.
+**Phase 3 — Hotspot Deep-Dive (single-pass):** For the top 10–15 largest files, ONE `ctx_execute_file` call per file. Processing code reads `config.domains` and runs `if (CHECKS.includes("security")) {...}` branches — only requested domains' signals extracted. Files are read **exactly once**.
 
-Files are read **exactly once** — by the agent's Step 3. Pattern evidence comes via `ctx_search` against auto-indexed Step 2 output, never re-reading source. Domain and scope filtering happen in the dispatcher before the agent runs, so they cannot be silently violated.
+**Phase 4 — Compile Report:** Native `Write` to the report file at repo root. Severity-first ordering, cross-domain dedup (same `file:line` ±2 lines merged). Appends one 6-field entry to `.codelens/reviews.json` (timestamp, command, scope, summary, status, reportPath).
+
+The agent is **stateless**: no persisted intermediate JSON, no checkpoints, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body.
 
 ## Report Preview
 
@@ -364,7 +362,7 @@ Edit `.claude/review-presets.json` in your project.
 All four domains' criteria live in `agents/codelens-reviewer.md` as `<security-criteria>`, `<architecture-criteria>`, `<code-quality-criteria>`, `<accessibility-criteria>` blocks. Edit the relevant block to add/remove checks.
 
 ### Report Format
-The report template is in `skills/_shared/report-template.md`. Modify sections, severity names, or output format.
+The report template is inlined in `agents/codelens-reviewer.md` Phase 4. Modify sections, severity names, or output format there.
 
 ## Contributing
 
