@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.2] - 2026-06-15
+
+Patch release addressing 4 spec violations exposed by the first end-to-end smoke test (`docs/smoke-tests/2026-06-15-portfolio-v0.0.1/`). No breaking changes. All fixes are agent-side recipe corrections and a documentation cleanup.
+
+### Added
+
+- **Phase 0 dependency preflight** — agent now verifies `rg`, context-mode MCP, AND Context7 MCP before any review work. Each check has explicit `[FAIL] ... Agent revoking execution.` language and concrete install commands. Replaces the single `ctx_stats` check from v0.0.1.
+- **Toast container a11y pattern** — `rg --no-heading -n '<Toaster|toast\('` added to Phase 2 a11y block. Catches toast components that may lack `aria-live` regions.
+
+### Changed
+
+- **Phase 1 rg routing** — `rg --files` now runs through native Bash (host shell), not inside `ctx_batch_execute`. The ctx-mode sandbox PATH excludes ripgrep; v0.0.1's recipe caused `command not found: rg` failures. Non-rg inventory commands (`find`, `cat package.json`) stay in `ctx_batch_execute`.
+- **Phase 2 rg rule relaxed** — the v0.0.1 "ONE ctx_batch_execute" contract is relaxed for Phase 2 because (a) rg must use Bash (per Phase 1 fix) and (b) nested-quote regex concatenation (e.g. `'SECRET|PASSWORD' | rg -v 'process\.env|\.env'`) breaks shell parsing. Each rg is now its own Bash call.
+- **Phase 4 reviews.json schema tightened** — explicit "EXACTLY 6 fields, no more, no less" language with literal JSON example and per-field rules. v0.0.1's loose phrasing ("appends this entry") produced an 8-field drift in the smoke test.
+
+### Fixed
+
+- **CONTRIBUTING.md file-tree** — replaced stale v1.7.x references (`help/SKILL.md`, `_shared/*`, `docs/pipeline-diagram.md`) with the actual v0.0.1+ tree (`doctor/SKILL.md`, `.claude-plugin/`, `examples/`, `docs/smoke-tests/`).
+- **Toast live-region regression** — v1.x flagged missing `aria-live` on `react-hot-toast` containers; v0.0.1 dropped the pattern during the rebuild. Smoke test confirmed the regression; the new `<Toaster` pattern restores coverage.
+
+### Smoke Test Context
+
+The 2026-06-15 portfolio smoke test (`docs/smoke-tests/2026-06-15-portfolio-v0.0.1/audit-summary.md`) gave v0.0.1 a PARTIAL PASS:
+- ✅ v0.0.1 found 2.2× more issues than v1.x on the same codebase (24 vs 11 findings)
+- ✅ Critical tier entirely new (Next.js CVEs v1.x missed)
+- ✅ Single-pass invariant held (15/15 hotspots, no re-reads)
+- ❌ 4 spec violations documented above
+
 ## [0.0.1] - 2026-06-15
 
 Beta rebuild. Architecture overhauled for token efficiency — full rebuild of skills, agent, and supporting files. **Breaking changes from 1.x.**

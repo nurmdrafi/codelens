@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Multi-domain code review plugin for Claude Code",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "license": "MIT"
   },
   "plugins": [
@@ -14,7 +14,7 @@
       "name": "codelens",
       "source": "./",
       "description": "Multi-domain code review and analysis: security, architecture, code quality, accessibility. Beta.",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "author": {
         "name": "nurmdrafi"
       },
