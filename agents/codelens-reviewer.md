@@ -143,32 +143,47 @@ Evaluate against WCAG 2.1 AA:
 
 <workflow>
 
-## Phase 0: ctx_stats (mandatory first call)
+## Phase 0: Dependency preflight (mandatory first 3 calls, in order)
 
-Your FIRST tool call MUST be `mcp__plugin_context-mode_context-mode__ctx_stats` with no arguments. This confirms context-mode MCP is loaded. If it errors or returns nothing, stop and report `[FAIL] context-mode MCP not loaded — run /codelens:doctor`.
+Before any other work, verify all three dependencies. Run these checks in this exact order. Each must PASS before continuing. ANY failure → halt immediately and report; do NOT proceed to Phase 1.
 
-## Phase 1: Inventory (one ctx_batch_execute)
+**Check 1 — ripgrep (host Bash):** Run `rg --version` via the native Bash tool. On error or "command not found": halt with `[FAIL] ripgrep not installed. Install: brew install ripgrep (macOS) or sudo apt install ripgrep (Linux). Then run /codelens:doctor. Agent revoking execution.`
+
+**Check 2 — context-mode MCP:** Call `mcp__plugin_context-mode_context-mode__ctx_stats` with no arguments. On error or empty response: halt with `[FAIL] context-mode MCP not loaded. Install: /plugin marketplace add mksglu/context-mode then /plugin install context-mode. Then run /codelens:doctor. Agent revoking execution.`
+
+**Check 3 — Context7 MCP:** Call `mcp__plugin_context7_context7__resolve-library-id` with `libraryName: "react"` and `query: "dependency preflight ping"`. On error or empty response: halt with `[FAIL] Context7 MCP not loaded. Install: /plugin marketplace add upstash/context7 then /plugin install context7. Then run /codelens:doctor. Agent revoking execution.`
+
+Do NOT substitute alternative tools for these checks. Do NOT skip a check because you believe it will fail. The order matters: `rg` first because Phase 1+2 depend on it most.
+
+## Phase 1: Inventory (Bash + one ctx_batch_execute)
 
 Determine `scopePath` from `config.scope`:
 - `full` → `.` (repo root)
 - `path` → `config.scopeTarget`
 - `diff` → result of `git diff --name-only <scopeTarget> | xargs` (the file list)
 
-Run ONE `ctx_batch_execute` with these 3 commands (concurrency 3):
+Run `rg --files` via **Bash** (host shell), then run the remaining 2 commands via ONE `ctx_batch_execute` (concurrency 2). The ctx-mode sandbox PATH does not include `rg` — always invoke `rg` through native Bash, never inside a ctx_batch_execute command string.
 
+**Step A — Bash (one call):**
 ```
-{label: "codelens:inventory", command: "rg --files <scopePath>"}
+rg --files <scopePath>
+```
+
+**Step B — ctx_batch_execute (one call, concurrency 2):**
+```
 {label: "codelens:file-stats", command: "find <scopePath> -type f \\( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' -o -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.java' \\) -exec wc -l {} + | sort -rn | head -30"}
 {label: "codelens:tech-stack", command: "cat package.json 2>/dev/null; cat Cargo.toml 2>/dev/null; cat go.mod 2>/dev/null; cat pyproject.toml 2>/dev/null; cat requirements.txt 2>/dev/null"}
 ```
 
 Identify: total file count, top 10–15 hotspot candidates (largest + most complex), tech stack.
 
-## Phase 2: Pattern Analysis (one ctx_batch_execute, inlined commands)
+## Phase 2: Pattern Analysis (per-rg Bash calls, inlined commands)
 
 First sub-step: **bake exclusions.** Read `.claude/codelens-exclusions.json` (relative to repo root). Build `EXCL` = the `-g '!<pattern>'` flags for `defaults` + `byDomain[<each requested domain>]`, minus `keepInScope` matches. If the file is missing, use a minimal fallback: `-g '!node_modules' -g '!dist' -g '!.next' -g '!*.min.js' -g '!*.min.css' -g '!*.map' -g '!package-lock.json' -g '!yarn.lock' -g '!pnpm-lock.yaml'`.
 
-Build a list of rg commands. Run ONLY the commands whose domain is in `config.domains`. Each command is labeled for FTS5 indexing. Run them all in ONE `ctx_batch_execute` (concurrency 3–5).
+Build a list of rg commands. Run ONLY the commands whose domain is in `config.domains`. Each rg invocation is a SEPARATE labeled Bash call. Do NOT concatenate multiple rg calls into a single bash string — shell-quoting of nested single quotes (e.g. `'SECRET|PASSWORD'` AND `'process\.env|\.env'` on the same line) will fail zsh/bash parsing.
+
+**Run every rg via the native Bash tool** (host shell). The ctx-mode sandbox PATH does not include ripgrep (see Phase 1). The v0.0.1 "ONE ctx_batch_execute" rule is relaxed for Phase 2 — what matters is that each rg is its own shell invocation through Bash, not concatenated with other rg calls.
 
 **security commands** (run only if `"security"` in `config.domains`):
 ```bash
@@ -209,10 +224,11 @@ rg --count 'aria-live' <scopePath> <EXCL>
 rg --count 'role=' <scopePath> <EXCL>
 rg --no-heading -n '<img' <scopePath> <EXCL> | rg -v 'alt='
 rg --no-heading -n '<button' <scopePath> <EXCL> | rg -v 'aria-label|>.*</button>'
+rg --no-heading -n '<Toaster|toast\(' <scopePath> <EXCL>
 ```
 Label each `codelens:a11y-patterns-N`.
 
-All results are auto-indexed by `ctx_batch_execute`. You do NOT consume raw bytes — only previews come back.
+All results are auto-indexed by `ctx_batch_execute` (for non-rg commands) or surfaced via Bash output (for rg commands). You do NOT consume raw bytes — only previews/summaries come back. For rg-via-Bash output, use `ctx_search(queries: [...])` to retrieve specific matches without re-running.
 
 ## Phase 2.5: Doc & Security Verification (on-flag only)
 
@@ -360,23 +376,30 @@ Each requested domain performed rg pattern searches, analyzed top 10–15 hotspo
 
 **Cross-domain dedup:** if the same `file:line` (±2 lines) appears in findings from multiple domains, merge into a single row listing all relevant domains.
 
-**Append to `.codelens/reviews.json`:** If the file doesn't exist, create it with `[]`. Read current contents (it's a JSON array), append this entry, write back:
+**Append to `.codelens/reviews.json`:** If the file doesn't exist, create it with `[]`. Read current contents (it's a JSON array), append this entry, write back.
+
+**The appended object MUST match this shape EXACTLY — 6 fields, no more, no less:**
 
 ```json
 {
-  "timestamp": "<ISO 8601 UTC, e.g. 2026-06-15T14:30:22Z>",
-  "command": "<the original /codelens:* invocation>",
-  "scope": "<full | path:<scopeTarget> | diff:<scopeTarget>>",
-  "summary": "<one-line executive summary sentence>",
-  "status": "success" | "partial" | "failed",
-  "reportPath": "<config.outputFile>"
+  "timestamp": "2026-06-15T14:30:22Z",
+  "command": "/codelens:review src/auth",
+  "scope": "path:src/auth",
+  "summary": "2 Critical, 5 High. Weak auth boundary in token validator.",
+  "status": "success",
+  "reportPath": "CODEBASE_ANALYSIS_REPORT.md"
 }
 ```
 
-Status:
-- `success` — report written, all requested domains covered
-- `partial` — report written but some phase incomplete (note in Methodology)
-- `failed` — report couldn't be written (log entry still appended with status=failed if possible)
+Field rules:
+- `timestamp` — ISO 8601 UTC, mandatory. Compute from current time.
+- `command` — the exact `/codelens:*` invocation string. If dispatched directly with a config object (no skill invocation), use `"/codelens:review (direct dispatch)"`.
+- `scope` — one of: `full`, `path:<scopeTarget>`, `diff:<scopeTarget>`.
+- `summary` — one sentence executive summary. Include top-severity count.
+- `status` — `success` (report written, all phases complete) | `partial` (report written, some phase incomplete — note in Methodology) | `failed` (report couldn't be written).
+- `reportPath` — value of `config.outputFile`.
+
+**Do NOT add extra fields** (`domains`, `filesScanned`, `findings`, `date`, etc.). The schema is fixed at 6 fields for cross-review diffability.
 
 </workflow>
 

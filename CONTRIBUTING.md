@@ -145,21 +145,24 @@ agents/
   codelens-reviewer.md     # Single domain-aware agent (scans, analyzes, compiles)
                            # Contains <security-criteria>, <architecture-criteria>,
                            # <code-quality-criteria>, <accessibility-criteria> blocks
-                           # plus the 4-step workflow
+                           # plus the 5-phase workflow (Phase 0 preflight → Phase 4 report)
 skills/
-  review/SKILL.md          # /codelens:review — full multi-domain
+  review/SKILL.md              # /codelens:review — full multi-domain (owns picker)
   review-security/SKILL.md     # /codelens:review-security
   review-architecture/SKILL.md # /codelens:review-architecture
   review-quality/SKILL.md      # /codelens:review-quality
   review-a11y/SKILL.md         # /codelens:review-a11y
   review-pr/SKILL.md           # /codelens:review-pr (diff scope)
-  help/SKILL.md                # /codelens:help
-  _shared/report-template.md   # Report format single-source-of-truth
-  _shared/setup-check.md       # Dependency gate
+  doctor/SKILL.md              # /codelens:doctor (setup diagnostics)
 .claude/
-  review-presets.json      # Default presets (pr-check, a11y-audit, full-audit)
-  codelens-exclusions.json # Exclusion patterns
+  review-presets.json          # Default presets (pr-check, a11y-audit, full-audit)
+  codelens-exclusions.json     # Exclusion patterns (defaults + byDomain + keepInScope)
+.claude-plugin/
+  plugin.json                  # Plugin manifest
+  marketplace.json             # Marketplace listing
+examples/
+  sample-report.md             # Anonymized real report
 docs/
-  pipeline-diagram.md          # Developer-facing pipeline diagram (mermaid)
+  smoke-tests/                 # End-to-end test runs (reference for refactoring)
 CLAUDE.md                  # Project instructions for Claude Code
 ```
