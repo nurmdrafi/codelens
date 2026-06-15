@@ -1,40 +1,38 @@
 ---
 name: review
 description: |
-  Use when running a multi-domain codebase review. Triggers: "code review", "review codebase", "codebase analysis", "/codelens:review". Defaults to all 4 domains (security, architecture, quality, a11y) on the entire repo. Accepts a domain keyword, a path, both, or NL description.
+  Use when running a codebase review across any combination of security, architecture, code quality, and accessibility. Triggers: "code review", "review codebase", "security review", "PR review", "review diff", "/codelens:review". Defaults to all 4 domains on the entire repo. Accepts NL description of domains, scope, path, or PR range.
 user-invocable: true
-argument-hint: "[security|architecture|quality|a11y|all] [path] [--preset <name>]"
+argument-hint: "[NL: domains + scope + path or PR range]"
 ---
 
-# Codelens Full Review
+# Codelens Review
 
-Dispatches `codelens-reviewer` with `domains` from args, defaulting to all four. Supports path scope and presets.
+Single entry point. Resolves `{domains, scope, scopeTarget, outputFile}` from the user's prompt, then dispatches `codelens-reviewer`.
 
 ## Execution
 
-1. Parse `$ARGUMENTS`:
-   - Empty → invoke `AskUserQuestion` with two questions: (a) domains — options `[All 4 domains (Recommended), Security only, Architecture only, Quality only, A11y only]`, multiSelect false; (b) scope — options `[Entire repo (Recommended), Specific path, PR diff (main..HEAD)]`. If user picks Specific path, follow up with one question asking for the path string.
-   - Contains a domain keyword (`security|architecture|quality|a11y|all`) → set `domains` to `["<domain>"]` (or all four for `all`). If multiple keywords present, include all matched.
-   - Contains a path-like token (starts with `./` or `/` or contains `/` and exists as a directory) → set `scope = "path"`, `scopeTarget = "<that token>"`, and remove it from the domains parse.
-   - Contains `--preset <name>` → load `.claude/review-presets.json` and use that preset's `domains` and `scope`. Unknown preset name → STOP with error.
-   - NL description (no keywords matched) → infer which domain(s) apply from the text; default to all four if unclear.
+1. Read `$ARGUMENTS` and infer config:
+   - **domains** — subset of `security|architecture|quality|a11y`. Match domain keywords (or OWASP/WCAG/SOLID/"code quality"/"a11y"/"accessibility"). Unspecified → all four: `["security","architecture","quality","a11y"]`.
+   - **scope** — `full` (default) | `path` (prompt names a real directory/file) | `diff` (prompt says "PR", "diff", "changes", or a `<base>..<head>` range / commit SHA).
+   - **scopeTarget** — `""` for full | `<path>` for path | `<base>..<head>` for diff. Single SHA → `<sha>^..<sha>`.
+   - **preset** — if prompt names a preset in `.claude/review-presets.json` (`pr-check`, `a11y-audit`, `full-audit`), use its domains/scope as base, then apply NL overrides. Preset domains `"all"` → all four.
+   - **outputFile** — single domain → `<DOMAIN>_REPORT.md` (e.g. `SECURITY_REPORT.md`); multiple domains + full/path → `CODEBASE_ANALYSIS_REPORT.md`; diff scope → `PR_REVIEW_<sanitized>.md` (replace `..` with `-`, strip slashes).
 
-2. Resolve final config:
-   ```json
-   {
-     "domains": <resolved array, default ["security","architecture","quality","a11y"]>,
-     "scope": <"full" | "path" | "diff", default "full">,
-     "scopeTarget": <"" | "<path>" | "main..HEAD", default "">,
-     "outputFile": "CODEBASE_ANALYSIS_REPORT.md"
-   }
-   ```
+2. If `$ARGUMENTS` is empty OR any field is ambiguous, call `AskUserQuestion` to resolve only the ambiguous fields. Defaults: domains=[all four], scope picker [full, path, diff]. If scope=path chosen, follow up for the path string. Do not ask about fields the prompt already disambiguated.
 
-3. Dispatch the `codelens-reviewer` agent with this config. The agent runs Phases 0–4 in one turn and writes the report + log entry.
+3. Dispatch `codelens-reviewer` with the resolved config. Agent runs Phases 0–4 in one turn and writes the report + `.codelens/reviews.json` entry.
 
-4. On completion: report path is `CODEBASE_ANALYSIS_REPORT.md` at repo root; review log appended at `.codelens/reviews.json`.
+## Examples
+
+- `/codelens:review` → AskUserQuestion (bare invocation)
+- `/codelens:review full codebase only for security` → `{domains:["security"], scope:"full"}`, output `SECURITY_REPORT.md`
+- `/codelens:review src/auth` → `{domains:[all 4], scope:"path", scopeTarget:"src/auth"}`, output `CODEBASE_ANALYSIS_REPORT.md`
+- `/codelens:review security and quality of the PR` → `{domains:["security","quality"], scope:"diff", scopeTarget:"main..HEAD"}`, output `PR_REVIEW_main-HEAD.md`
+- `/codelens:review abc123..def456` → `{domains:[all 4], scope:"diff", scopeTarget:"abc123..def456"}`
+- `/codelens:review abc1234` → single SHA expands to `abc1234^..abc1234`
+- `/codelens:review pr-check` → loads preset, `{domains:["security","quality"], scope:"diff", scopeTarget:"main..HEAD"}`
 
 ## See Also
 
-- `/codelens:review-pr` for diff-scoped review
-- `/codelens:review-<domain>` for single-domain shortcuts
-- `/codelens:doctor` for setup diagnostics
+`/codelens:doctor` for setup diagnostics.

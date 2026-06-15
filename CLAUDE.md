@@ -4,7 +4,7 @@
 
 codelens is a Claude Code plugin for multi-domain code review. It scans codebases across four domains — security, architecture, code quality, accessibility — and produces a severity-first Markdown report.
 
-Current version: **0.0.1 (beta)**. Architecture: single agent + 7 thin skill dispatchers.
+Current version: **0.0.3 (beta)**. Architecture: single agent + 2 thin skill dispatchers (`/codelens:review`, `/codelens:doctor`).
 
 ## Tech Stack
 
@@ -13,12 +13,13 @@ Markdown only — skills, agents, configs. No build step, no runtime dependencie
 ## Architecture
 
 ```
-/codelens:* skill (thin dispatcher, 0.7–2.4KB)
-  → emits {domains, scope, scopeTarget, outputFile}
+/codelens:review (NL-driven dispatcher, ~2.5KB)
+  → reads $ARGUMENTS, infers {domains, scope, scopeTarget, outputFile}
+  → AskUserQuestion fallback when bare/ambiguous
   → codelens-reviewer agent (single invocation, ~400 lines):
-      Phase 0: ctx_stats (mandatory first call)
-      Phase 1: Inventory (ctx_batch_execute: rg --files, wc -l, top-30)
-      Phase 2: Patterns (ctx_batch_execute: per-domain rg commands, filtered by config.domains)
+      Phase 0: Dependency preflight (rg + ctx_stats + Context7, mandatory first 3 calls)
+      Phase 1: Inventory (Bash rg --files + ctx_batch_execute: wc -l, top-30, tech-stack)
+      Phase 2: Patterns (per-rg Bash calls, inlined commands, filtered by config.domains)
       Phase 2.5: Doc/CVE verify (on-flag only, Context7 + WebSearch)
       Phase 3: Hotspots (ctx_execute_file × 10–15, single-pass, all domains per file)
       Phase 4: Compile (Write report + append to .codelens/reviews.json)
@@ -43,12 +44,7 @@ Optional: WebSearch (built-in) for CVE lookups in Phase 2.5.
   plugin.json              # Plugin manifest
   marketplace.json         # Marketplace listing
 skills/
-  review/SKILL.md          # /codelens:review (multi-domain, picker)
-  review-security/SKILL.md # /codelens:review-security
-  review-architecture/SKILL.md
-  review-quality/SKILL.md
-  review-a11y/SKILL.md
-  review-pr/SKILL.md       # /codelens:review-pr (diff scope)
+  review/SKILL.md          # /codelens:review (single entry point, NL-driven)
   doctor/SKILL.md          # /codelens:doctor (setup diagnostics)
 agents/
   codelens-reviewer.md     # The single agent
@@ -95,9 +91,9 @@ The `codelens-reviewer` agent obeys these structural rules (encoded as `<constra
 - **Domain-aware** — only run commands and report sections for domains in `config.domains`.
 - **Scope-aware** — every rg command targets the resolved `scopePath`.
 - **rg over Glob/Grep** — always.
-- **ctx_batch_execute** for Phases 1–2 — never sequential Bash.
+- **ctx_batch_execute** for non-rg Phase 1–2 commands — rg uses native Bash (v0.0.2 fix).
 - **ctx_execute_file** for Phase 3 — never raw Read of source files.
-- **ctx_stats first** — agent's first tool call must be `ctx_stats`.
+- **ctx_stats first** — agent's first Phase 0 call is `ctx_stats` (preceded only by `rg --version` preflight).
 - **Severity-first ordering** — Critical > High > Medium > Low > Informational.
 - **Evidence-backed** — every finding has file path, line number, snippet.
 - **Cross-domain dedup** — same `file:line` (±2 lines) across domains merges into one row.
@@ -111,7 +107,7 @@ The `codelens-reviewer` agent obeys these structural rules (encoded as `<constra
 1. Add the `rg` command to the relevant domain's section in `agents/codelens-reviewer.md` Phase 2.
 2. Add the evaluation logic to the relevant `<*-criteria>` block.
 3. If the pattern needs Step 3 deep-dive verification, add a check to the `ctx_execute_file` processing code in Phase 3.
-4. Test by running `/codelens:review-<domain>` on a codebase that has the pattern.
+4. Test by running `/codelens:review <domain>` on a codebase that has the pattern.
 
 ### Modify the report format
 

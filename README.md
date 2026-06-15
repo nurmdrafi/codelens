@@ -22,7 +22,7 @@ Even with linters and CI checks, significant issues evade detection because they
 
 ## The Solution
 
-**codelens** runs as **one domain-aware agent** (`codelens-reviewer`) behind **seven thin dispatcher skills** (`/codelens:review`, `/codelens:review-{security,architecture,quality,a11y,pr}`, `/codelens:doctor`). The dispatcher skills pre-filter everything — which domains, which scope — so the agent receives a literal config and executes it verbatim. Coverage spans all four review perspectives:
+**codelens** runs as **one domain-aware agent** (`codelens-reviewer`) behind **two thin dispatcher skills** (`/codelens:review`, `/codelens:doctor`). The `/codelens:review` dispatcher resolves your intent — which domains, which scope — from natural language and passes a literal config to the agent, which executes it verbatim. Coverage spans all four review perspectives:
 
 - **Security** — OWASP Top 10 classification with Context7-powered CVE verification
 - **Architecture** — SOLID compliance, dependency analysis, pattern verification
@@ -37,7 +37,7 @@ The single agent reads each source file exactly once and analyzes all requested 
 |-------|---------|------|
 | `codelens-reviewer` | Single domain-aware agent: scans, analyzes all requested domains in one pass, compiles report. Absorbs the former scanner + 4 reviewers + orchestrator. | `agents/codelens-reviewer.md` |
 
-The 7 `/codelens:*` skills are thin dispatch wrappers that parse args, run the dependency gate, and invoke this single agent with a config object (`{domains, scope, scopeTarget, diffRange, outputFile}`).
+The 2 `/codelens:*` skills are thin dispatch wrappers. `/codelens:review` resolves `{domains, scope, scopeTarget, outputFile}` from natural language and invokes this single agent; `/codelens:doctor` runs setup diagnostics.
 
 ## Documentation
 
@@ -65,17 +65,20 @@ Requires [Claude Code](https://claude.ai/code) CLI, desktop app, or IDE extensio
 # Full review — all four domains, entire codebase
 /codelens:review
 
-# Security-only review
-/codelens:review-security
+# Security-only review (NL variants — model resolves any of these)
+/codelens:review security
+/codelens:review only security
+/codelens:review full codebase only for security
 
-# PR review — security + code quality on your unmerged changes
-/codelens:review-pr
+# PR review — model detects "PR"/"diff" intent
+/codelens:review the PR
+/codelens:review main..HEAD
 
 # Setup diagnostics + fix commands
 /codelens:doctor
 ```
 
-After scanning, codelens writes a domain-specific report (`SECURITY_REPORT.md`, `ARCHITECTURE_REPORT.md`, `CODE_QUALITY_REPORT.md`, `ACCESSIBILITY_REPORT.md`) for standalone runs, `CODEBASE_ANALYSIS_REPORT.md` for full reviews, or `PR_REVIEW_<range>.md` for PR reviews — all at your project root with findings organized by severity.
+After scanning, codelens writes a report at your project root: `<DOMAIN>_REPORT.md` for single-domain runs (e.g. `SECURITY_REPORT.md`), `CODEBASE_ANALYSIS_REPORT.md` for multi-domain full/path reviews, or `PR_REVIEW_<range>.md` for diff reviews — all with findings organized by severity.
 
 ## Required Setup
 
@@ -128,42 +131,36 @@ This runs setup diagnostics and prints `[OK]`/`[WARN]`/`[FAIL]` status for each 
 
 | Command | Purpose |
 |---|---|
-| `/codelens:review` | Full multi-domain review (security + architecture + quality + a11y) |
-| `/codelens:review-security` | Security-only review |
-| `/codelens:review-architecture` | Architecture-only review |
-| `/codelens:review-quality` | Code quality-only review |
-| `/codelens:review-a11y` | Accessibility-only review |
-| `/codelens:review-pr` | PR diff review |
+| `/codelens:review` | Multi-domain review (any subset of security, architecture, quality, a11y) on full repo, path, or diff scope |
 | `/codelens:doctor` | Setup diagnostics + fix commands |
 
 **Coming soon:** `/codelens:fix-*` for automated remediation.
 
 ### Path Scope
 
-Any review command accepts a path:
+Mention a directory or file in your prompt:
 - `/codelens:review src/lib/payments` — full review scoped to a path
-- `/codelens:review-security src/auth` — security review of one module
+- `/codelens:review security src/auth` — security review of one module
 
 ### Domain Subset
 
-`/codelens:review` accepts `--domains <comma-separated-list>` for an ad-hoc subset without editing presets:
-- `/codelens:review --domains security,quality` — only security + quality sections
-- `/codelens:review --domains a11y` — single domain (equivalent to `/codelens:review-a11y`)
-- `/codelens:review --domains security,architecture src/lib` — combine with path scope
-
-Precedence: `--domains` > `--preset` > default (all 4). Validation: domain names must be from `{security, architecture, quality, a11y}` (case-insensitive); invalid names fail fast with a clear error.
+Name the domains you want in plain language:
+- `/codelens:review security quality` — only security + quality sections
+- `/codelens:review a11y` — single domain
+- `/codelens:review security architecture src/lib` — combine with path scope
+- Unspecified → all four domains
 
 ### Diff Scope (PR review)
 
-`/codelens:review-pr` scans only changed files:
-- `/codelens:review-pr` — defaults to `main...HEAD` using `pr-check` preset (security + code-quality)
-- `/codelens:review-pr main..HEAD` — explicit range
-- `/codelens:review-pr abc123..def456` — specific commit range
-- `/codelens:review-pr <preset>` — use a preset from `.claude/review-presets.json`
+Mention "PR", "diff", "changes", or a range:
+- `/codelens:review the PR` — defaults to `main..HEAD`, all four domains
+- `/codelens:review abc123..def456` — specific commit range
+- `/codelens:review main..feature-x for security and quality` — combine with domain subset
+- `/codelens:review abc123` (single SHA) — expands to `abc123^..abc123`
 
 ### Presets
 
-Presets define domain + scope combinations for `/codelens:review-pr`. Built-in presets:
+Presets define domain + scope combinations referenced by name in your prompt. `/codelens:review pr-check` loads the `pr-check` preset. Built-in presets:
 
 | Preset | Domains | Scope |
 |--------|---------|-------|
@@ -199,13 +196,13 @@ Evaluates keyboard navigation, screen reader compatibility, visual/color contras
 
 ## How It Works
 
-codelens runs as a **single agent** with **dispatcher-side filtering**. The skill you invoke (e.g., `/codelens:review-security`) knows exactly which domains and scope you requested, so it pre-filters everything before the agent runs — it builds a literal command list containing only the requested domains' patterns, scoped to your path. The agent executes that list verbatim.
+codelens runs as a **single agent** with **dispatcher-side intent resolution**. When you invoke `/codelens:review`, the skill reads your prompt and resolves which domains and scope you requested, then passes a literal config to the agent — it builds a command list containing only the requested domains' patterns, scoped to your path or diff. The agent executes that list verbatim.
 
 This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) guidance: code review is a *well-defined task*, so it should be a *workflow* (predefined code paths) with deterministic filtering in the dispatcher, not agent discretion. The agent cannot analyze a domain you didn't request or scan outside your scope — those commands simply aren't in the config it receives.
 
 **Dispatcher (skill) — runs before the agent:**
-1. Parses your command (`/codelens:review-security src/auth` → domains=`["security"]`, scope=`path`, scopeTarget=`src/auth`)
-2. Builds the minimal config `{domains, scope, scopeTarget, outputFile}` and dispatches the agent
+1. Reads your prompt (`/codelens:review security src/auth` → domains=`["security"]`, scope=`path`, scopeTarget=`src/auth`)
+2. Builds the minimal config `{domains, scope, scopeTarget, outputFile}` and dispatches the agent. If any field is ambiguous, asks via `AskUserQuestion` first.
 
 **Agent (codelens-reviewer) — single continuous turn:**
 
@@ -284,17 +281,17 @@ The `codelens-reviewer` agent needs Context7 for library verification. Install i
 
 ### Review produces no findings
 - Verify the scan path contains source files (not just config/data files)
-- Run `/codelens:review` for a full scan instead of a single domain
+- Run `/codelens:review` (no args) for a full scan instead of a single domain
 - Check that the path scope matches actual file locations
 
 ### Too many false positives
-- Use `/codelens:review-security src/specific-path` to narrow scope
-- Edit domain agent files in `agents/` to remove patterns that don't apply to your stack
+- Use path scope: `/codelens:review security src/specific-path` to narrow scope
+- Edit the criteria blocks in `agents/codelens-reviewer.md` to remove patterns that don't apply to your stack
 - Create a `.claude/review-presets.json` with domains relevant to your project
 
 ### Review is slow on large repos
 - Use path scope: `/codelens:review src/module` instead of scanning the whole repo
-- Use diff scope for PRs: `/codelens:review-pr` only scans changed files
+- Use diff scope for PRs: `/codelens:review the PR` only scans changed files
 - The single-pass pipeline already minimizes token cost — large repos simply take longer
 
 ## FAQ
@@ -309,39 +306,26 @@ Depends on repo size. A 100-file project takes ~2-3 minutes. A 1000-file project
 Not yet — this is planned. The current design requires an interactive Claude Code session. A GitHub Action wrapper is on the roadmap.
 
 **How do I suppress false positives?**
-Edit the relevant domain agent in `agents/` to remove or adjust the pattern that triggered the false positive. Each agent's criteria section lists all checks — comment out or modify the ones that don't apply to your stack.
+Edit the relevant `<*-criteria>` block in `agents/codelens-reviewer.md` to remove or adjust the pattern that triggered the false positive. Each block lists all checks — comment out or modify the ones that don't apply to your stack.
 
 **What about large monorepos?**
 Use path scope to scan specific packages: `/codelens:review packages/auth`. The single-pass agent handles large file counts efficiently, but scanning an entire monorepo at once consumes more tokens.
 
 **Can I add custom domains?**
-Yes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the process: add a new `<yourdomain-criteria>` block to `agents/codelens-reviewer.md`, add a pattern command to Step 2, and add a dispatch skill under `skills/review-<yourdomain>/`.
+Yes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the process: add a new `<yourdomain-criteria>` block to `agents/codelens-reviewer.md`, add a pattern command to Phase 2, and add domain checks to Phase 3's processing code.
 
 ## Architecture
 
 ```
 codelens/
 ├── .claude-plugin/
-│   ├── plugin.json            # Plugin manifest (v1.5.0+)
+│   ├── plugin.json            # Plugin manifest
 │   └── marketplace.json       # Marketplace listing
 ├── skills/
 │   ├── review/
-│   │   └── SKILL.md           # /codelens:review (full review)
-│   ├── review-security/
-│   │   └── SKILL.md           # /codelens:review-security
-│   ├── review-architecture/
-│   │   └── SKILL.md           # /codelens:review-architecture
-│   ├── review-quality/
-│   │   └── SKILL.md           # /codelens:review-quality
-│   ├── review-a11y/
-│   │   └── SKILL.md           # /codelens:review-a11y
-│   ├── review-pr/
-│   │   └── SKILL.md           # /codelens:review-pr
-│   ├── doctor/
-│   │   └── SKILL.md           # /codelens:doctor
-│   └── _shared/
-│       ├── report-template.md # Single source of truth for report format
-│       └── setup-check.md     # Shared setup verification
+│   │   └── SKILL.md           # /codelens:review (all domains + scopes, NL-driven)
+│   └── doctor/
+│       └── SKILL.md           # /codelens:doctor
 ├── agents/
 │   └── codelens-reviewer.md   # Single domain-aware agent (scans, analyzes, compiles)
 ├── .claude/

@@ -14,7 +14,7 @@ description: |
 
   <example>
   Context: User wants a focused security audit
-  user: "Run /codelens:review-security on src/auth/"
+  user: "Run /codelens:review on src/auth for security"
   assistant: "I'll dispatch codelens-reviewer with domains=[security] scoped to src/auth/."
   <commentary>
   Single-domain scoped review → codelens-reviewer

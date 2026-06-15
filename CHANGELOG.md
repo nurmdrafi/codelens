@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+## [0.0.3] - 2026-06-15
+
+Skill dispatcher consolidation. 5 slash commands removed, `/codelens:review` is now the single NL-driven entry point.
+
+### Changed
+
+- **`/codelens:review` is now the single review entry point.** Resolves `{domains, scope, scopeTarget, outputFile}` from the user's prompt via NL inference. `AskUserQuestion` fires when invocation is bare or any field is ambiguous. Diff scope (formerly `/codelens:review-pr`) and all single-domain scopes (formerly `/codelens:review-<domain>`) handled inline.
+- **Agent body unchanged.** `codelens-reviewer` Phase 0–4 pipeline untouched. Config contract `{domains, scope, scopeTarget, outputFile}` preserved.
+
+### Removed
+
+- `/codelens:review-security` — use `/codelens:review security` (or any NL equivalent).
+- `/codelens:review-architecture` — use `/codelens:review architecture`.
+- `/codelens:review-quality` — use `/codelens:review quality`.
+- `/codelens:review-a11y` — use `/codelens:review a11y`.
+- `/codelens:review-pr` — use `/codelens:review <base>..<head>` or `/codelens:review the PR`.
+- `--domains` flag — state domains in natural language: `/codelens:review security quality`.
+- `skills/review-security/`, `skills/review-architecture/`, `skills/review-quality/`, `skills/review-a11y/`, `skills/review-pr/` — 5 skill directories (~3KB duplicate dispatch logic). Capabilities folded into `skills/review/SKILL.md`.
+
 ## [0.0.2] - 2026-06-15
 
 Patch release addressing 4 spec violations exposed by the first end-to-end smoke test (`docs/smoke-tests/2026-06-15-portfolio-v0.0.1/`). No breaking changes. All fixes are agent-side recipe corrections and a documentation cleanup.

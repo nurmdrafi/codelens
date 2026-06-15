@@ -54,9 +54,9 @@ The single `codelens-reviewer` agent has a `<*-criteria>` block per domain. To a
    - **Why it matters** — the risk or impact
    - **Severity guidance** — when is it Critical vs Low
 
-3. If your check needs a new ripgrep pattern, add it to the relevant domain's pattern command in Step 2's `ctx_batch_execute` block (conditionally included when the domain is requested).
+3. If your check needs a new ripgrep pattern, add it to the relevant domain's pattern command in Phase 2's rg block (conditionally included when the domain is requested).
 
-4. If the check needs Step 3 deep-dive verification, add a matching check to the processing code template in Step 3.
+4. If the check needs Phase 3 deep-dive verification, add a matching check to the processing code template in Phase 3.
 
 5. Test your change (see below).
 
@@ -72,10 +72,11 @@ To add an entirely new review domain (e.g., performance, i18n, SEO), open an iss
 
 After discussion, the domain is implemented as:
 1. New `<yourdomain-criteria>` block in `agents/codelens-reviewer.md`
-2. Pattern command added to Step 2's `ctx_batch_execute` (conditionally included when the domain is requested)
-3. Domain checks added to Step 3's processing code template
-4. New skill at `skills/review-<yourdomain>/SKILL.md` as a thin dispatch wrapper
-5. Optionally add a preset to `.claude/review-presets.json`
+2. Pattern command added to Phase 2's rg block (conditionally included when the domain is requested)
+3. Domain checks added to Phase 3's processing code template
+4. Optionally add a preset to `.claude/review-presets.json`
+
+Users then invoke the new domain via `/codelens:review <yourdomain>` — no new skill file needed.
 
 ## Testing Locally
 
@@ -89,10 +90,11 @@ The easiest way to test changes:
 
 2. In the test project, run review commands:
    ```
-   /review all                    # Full audit
-   /review security               # Single domain
-   /review pr-check               # Preset
-   /review all src/specific-path  # Path scope
+   /codelens:review                              # Full audit (bare → picker)
+   /codelens:review security                     # Single domain
+   /codelens:review pr-check                     # Preset
+   /codelens:review all src/specific-path        # Path scope
+   /codelens:review the PR                       # Diff scope
    ```
 
 3. Verify the report:
@@ -147,12 +149,7 @@ agents/
                            # <code-quality-criteria>, <accessibility-criteria> blocks
                            # plus the 5-phase workflow (Phase 0 preflight → Phase 4 report)
 skills/
-  review/SKILL.md              # /codelens:review — full multi-domain (owns picker)
-  review-security/SKILL.md     # /codelens:review-security
-  review-architecture/SKILL.md # /codelens:review-architecture
-  review-quality/SKILL.md      # /codelens:review-quality
-  review-a11y/SKILL.md         # /codelens:review-a11y
-  review-pr/SKILL.md           # /codelens:review-pr (diff scope)
+  review/SKILL.md              # /codelens:review — single NL-driven entry point (all domains + scopes)
   doctor/SKILL.md              # /codelens:doctor (setup diagnostics)
 .claude/
   review-presets.json          # Default presets (pr-check, a11y-audit, full-audit)
