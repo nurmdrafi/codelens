@@ -1,0 +1,10 @@
+[
+  {
+    "timestamp": "2026-06-15T20:15:00Z",
+    "command": "/codelens:review (direct dispatch)",
+    "scope": "full",
+    "summary": "2 Critical (client-exposed crypto key, unauthenticated cookie-bridge route), 17 High. Weak auth boundary, 171 eslint-disable markers, icon-only buttons missing aria-labels.",
+    "status": "success",
+    "reportPath": "CODEBASE_ANALYSIS_REPORT.md"
+  }
+]

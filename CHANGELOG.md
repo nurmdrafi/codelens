@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added (developer experience)
+
+- **Documented `--plugin-dir` local-testing method in CONTRIBUTING.md.** This is the recommended primary approach for testing codelens against a real target repo: `claude --plugin-dir /path/to/codelens` (optionally with `-p` for headless smoke tests). Replaces the v0.0.1-vintage `cp -r agents/ skills/ → .claude/` recipe as the primary method; the copy method is retained as a labeled fallback for older Claude Code versions. Discovered during the 2026-06-15 optimus-marchant smoke test — `--plugin-dir` requires no install, no copy, and no `.claude/` modifications in the target repo, making repeated smoke tests far less invasive.
+
+### Fixed (developer experience)
+
+- **`/codelens:doctor` MCP permission gap surfaced.** First headless run against optimus-marchant produced zero output because `mcp__plugin_context-mode_context-mode__ctx_stats` was missing from the target repo's `.claude/settings.local.json` allowlist. The allowlist had 6 codelens MCP tools but not `ctx_stats`, which is the agent's mandatory Phase 0 first call. `/codelens:doctor` reported "context-mode MCP responding" generically and did not catch the per-tool gap. CONTRIBUTING.md's new Testing Locally section now documents the full required allowlist. Follow-up: doctor should verify each codelens MCP tool individually (tracked as a v0.0.4 candidate in `docs/smoke-tests/2026-06-15-optimus-marchant-v0.0.3/audit-summary.md` §6).
+
+### Smoke Test Context
+
+The 2026-06-15 optimus-marchant smoke test (`docs/smoke-tests/2026-06-15-optimus-marchant-v0.0.3/audit-summary.md`) gave v0.0.3 a PARTIAL PASS:
+- ✅ reviews.json 6-field schema holds (v0.0.2 fix verified in production)
+- ✅ Phase 1 rg-via-host-Bash and Phase 2 per-pattern Bash calls both correct
+- ✅ v0.0.3 single NL entry point dispatches headlessly with zero interactive prompts
+- ✅ Report quality strong — 48 findings (2 Critical / 17 High / 14 Medium / 9 Low / 6 Info); both Criticals are real security issues
+- ❌ Phase 0 `ctx_stats`-first rule still violated (agent substituted `ctx_search`; `ctx_stats` never called) — same pattern flagged in v0.0.1 portfolio audit, v0.0.2 hardening did not hold
+- ❌ Phase 3 `ctx_execute_file` rule violated (agent used `Bash cat` for all 21 hotspot reads)
+
 ## [0.0.3] - 2026-06-15
 
 Skill dispatcher consolidation. 5 slash commands removed, `/codelens:review` is now the single NL-driven entry point.

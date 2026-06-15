@@ -80,28 +80,87 @@ Users then invoke the new domain via `/codelens:review <yourdomain>` — no new 
 
 ## Testing Locally
 
-The easiest way to test changes:
+There are two ways to test codelens against a real codebase. The `--plugin-dir` flag is the recommended primary method — it loads the plugin for one session with no install, no copy, and no marketplace state. The `cp -r` fallback is for older Claude Code versions that lack `--plugin-dir`.
 
-1. Copy the `agents/` and `skills/` directories into a test project's `.claude/` directory:
-   ```bash
-   cp -r agents/ /path/to/test-project/.claude/
-   cp -r skills/ /path/to/test-project/.claude/
-   ```
+### Method 1 (recommended): `--plugin-dir` flag
 
-2. In the test project, run review commands:
-   ```
-   /codelens:review                              # Full audit (bare → picker)
-   /codelens:review security                     # Single domain
-   /codelens:review pr-check                     # Preset
-   /codelens:review all src/specific-path        # Path scope
-   /codelens:review the PR                       # Diff scope
-   ```
+Loads the plugin from its source directory for the current session only. No install, no copy, no `.claude/` modifications in the target repo. Works for both interactive and headless (`-p`) sessions.
 
-3. Verify the report:
-   - Does your new pattern appear in findings?
-   - Is the severity correct?
-   - Is the evidence accurate (file path, line number, code snippet)?
-   - Does the fix suggestion make sense?
+```bash
+# 1. (optional) validate the plugin manifest before launching
+claude plugin validate /path/to/codelens
+
+# 2. launch Claude Code from INSIDE the target repo with the plugin loaded
+cd /path/to/test-project
+claude --plugin-dir /path/to/codelens
+
+# 3. inside Claude Code, invoke skills namespaced as /<plugin-name>:<skill-name>
+/codelens:doctor                       # setup diagnostics — run this first
+/codelens:review                       # full audit (bare → AskUserQuestion picker)
+/codelens:review security              # single domain
+/codelens:review pr-check              # preset (security + quality, diff scope)
+/codelens:review all src/specific-path # path scope
+/codelens:review the PR                # diff scope
+
+# 4. after editing plugin files (hot reload — no restart needed)
+/reload-plugins
+
+# 5. debug plugin-loading issues on next launch
+claude --debug --plugin-dir /path/to/codelens
+```
+
+Notes:
+- Plugin name comes from `.claude-plugin/plugin.json` → `name: "codelens"`. Rename the field and the `/codelens:...` prefix changes accordingly.
+- Skills are at `skills/<name>/SKILL.md`. Agents are auto-discovered from `agents/`. MCP servers from `.mcp.json` (codelens ships none — it relies on the user-installed context-mode and Context7 MCPs).
+- The target repo's `.claude/settings.local.json` controls MCP tool permissions. codelens's Phase 0–3 phases call context-mode + Context7 MCPs, so those tools must be in the target's allowlist (or approved on first use).
+
+#### Headless smoke testing
+
+For automated smoke tests against a target repo without an interactive session, use `claude -p` (print mode). Output goes to stdout, exit code reflects success. Useful for CI or scripted test runs:
+
+```bash
+cd /path/to/test-project
+
+# run the full audit headlessly, capture output to a log
+claude --plugin-dir /path/to/codelens -p '/codelens:review' 2>&1 | tee smoke-test.log
+
+# single domain, fast iteration on a pattern you're developing
+claude --plugin-dir /path/to/codelens -p '/codelens:review security'
+
+# stream-json output for programmatic parsing
+claude --plugin-dir /path/to/codelens -p --output-format json '/codelens:review' > result.json
+```
+
+### Method 2 (fallback): copy into `.claude/`
+
+For Claude Code versions without `--plugin-dir`, copy `agents/` and `skills/` into the target repo's `.claude/` directory. This is more invasive — it writes into the target repo and requires a re-copy after every change.
+
+```bash
+# 1. copy the plugin files into the target's .claude/ directory
+cp -r /path/to/codelens/agents/ /path/to/test-project/.claude/
+cp -r /path/to/codelens/skills/ /path/to/test-project/.claude/
+
+# 2. launch Claude Code normally — skills are auto-discovered
+cd /path/to/test-project
+claude
+
+# 3. invoke as Method 1 (commands are identical once loaded)
+/codelens:review
+```
+
+⚠️ **Caveats:**
+- If the target repo already has `.claude/settings.local.json`, do not overwrite it — only merge the codelens MCP permissions in.
+- After every edit to codelens source, re-copy the changed files (`cp -r` again) since the target's `.claude/` is a snapshot.
+- Clean up: `rm -rf /path/to/test-project/.claude/agents/codelens-reviewer.md /path/to/test-project/.claude/skills/{review,doctor}` when finished.
+
+### Verifying the report
+
+Regardless of method, after `/codelens:review` completes check:
+- Does your new pattern appear in findings?
+- Is the severity correct?
+- Is the evidence accurate (file path, line number, code snippet)?
+- Does the fix suggestion make sense?
+- For the reviews log: did `.codelens/reviews.json` get one entry appended with the expected 6 fields (`timestamp`, `command`, `scope`, `summary`, `status`, `reportPath`)?
 
 ### Edge Cases to Test
 
