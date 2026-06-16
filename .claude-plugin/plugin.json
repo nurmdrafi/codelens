@@ -1,6 +1,6 @@
 {
   "name": "codelens",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Multi-domain code review and analysis for Claude Code: security, architecture, code quality, and accessibility — on your full repo, a module, or a PR diff. Beta.",
   "author": {
     "name": "nurmdrafi",

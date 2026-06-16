@@ -127,6 +127,30 @@ Sandboxed file processing that prevents context window flooding during large-sca
 
 This runs setup diagnostics and prints `[OK]`/`[WARN]`/`[FAIL]` status for each dependency, with concrete fix commands for anything missing or misconfigured.
 
+## Optional Tools (recommended, not required)
+
+codelens v0.0.4+ integrates two purpose-built tools when installed, falling back to rg patterns when not. **Both install in under a minute via npm** and significantly improve finding quality on JS/TS codebases:
+
+### Biome (lint + accessibility)
+
+```bash
+npm install -g @biomejs/biome
+```
+
+Replaces hand-written rg patterns for code quality and accessibility with 491 lint rules including 15+ JSX/HTML a11y checks. Catches SVG accessibility issues, suspicious patterns, and complexity problems rg patterns miss.
+
+### fallow (codebase intelligence)
+
+```bash
+npm install -g fallow
+```
+
+Adds AST-based analysis rg cannot do: unused files/exports/dependencies (dead-code), token-based duplication detection, complexity hotspot scoring, circular dependency detection, and architecture boundary violations. Rust-native, sub-second on most projects.
+
+### Without these tools
+
+codelens works fine without Biome and fallow installed — Phase 2 falls back to rg patterns and the report notes "dead-code and duplication analysis skipped — install fallow for full coverage." No errors, no degraded core review.
+
 ## Commands
 
 | Command | Purpose |

@@ -1,0 +1,28 @@
+phase	T_prompt	N_tools	t_wall_ms	B_ctx	findings_total	findings_CH	shape	exit_code	scope
+harness-check	5420	0
+0	341	27	0	0	cheap	1	./src
+harness-check2	5420	0
+0	6393	94	0	0	cheap	1	./src
+harness-check3	5420	0
+0	173539	1544	1	1	cheap	0	./src
+harness-check4	5420	75	150291	120718	0
+0	0
+0	cheap	0	./src
+baseline	5420	114	223278	173103	4	0	cheap	0	./src
+0a	5437	96	233782	172748	6	0	cheap	0	./src
+0a-run2	5437	108	201490	166472	1	0	cheap	0	./src
+0a-run3	5437	93	182471	161345	5	0	cheap	0	./src
+0-smoke	5309	63	208045	147189	11	5	cheap	0	./src
+4-smoke	5025	93	191747	147871	0	0	cheap	0	./src
+4-smoke2	5132	102	177836	159912	4	1	cheap	0	./src
+2-smoke	5112	48	181154	119243	7	2	cheap	0	./src
+config2-biome	5570	81	184192	150542	3	0	cheap	0	./src
+config2-biome-qa	5570	135	227455	204120	15	5	cheap	0	./src
+config3-fallow	5659	126	304241	228543	13	4	cheap	0	./src
+config4-full	5743	141	326067	253920	17	5	cheap	0	./src
+config1-baseline-qa	5420	108	193823	164406	9	1	cheap	0	./src
+final-smoke	5607	120	194519	193395	13	3	cheap	0	./src
+phase4-smoke	5439	96	214029	199230	9	1	cheap	0	./src
+v004-final	5492	78	225620	188568	9	0	cheap	0	./src
+cleanup-verify	5492	126	348694	223969	14	2	cheap	0	./src
+v004-e2e-portfolio	5492	146	347231	336800	34	7	full	0	./src

@@ -1,9 +1,14 @@
-# Reference/planning docs (not shipped with plugin)
-references/
+# Reference docs (not shipped with plugin) — but report-template.md MUST ship
+references/*
+!references/report-template.md
 
 # codelens review history (per-user, not plugin source)
 .codelens/reviews.json
 .codelens/scan.log
+
+# Benchmark raw artifacts (regenerable — only keep summaries)
+docs/superpowers/benchmarks/reports/
+docs/superpowers/benchmarks/transcripts/
 
 # OS files
 .DS_Store
@@ -19,4 +24,4 @@ Thumbs.db
 node_modules/
 
 # Internal documentation (superpowers specs — not shipped)
-docs/superpowers/
+# docs/superpowers/

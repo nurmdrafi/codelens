@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-06-17
+
+### Changed
+
+- **Phase 2 tool substitution** — codelens now uses Biome (JS/TS lint + a11y, 491 rules) and fallow (dead-code, duplication, complexity, circular deps, architecture boundaries) when installed, with rg fallback per missing tool. Catches findings rg patterns cannot: SVG a11y (Biome `noSvgWithoutTitle`), unused files/exports/dependencies (fallow `dead-code`), code duplication (fallow `dupes`), maintainability hotspots (fallow `health`). Empirical comparison documented in `docs/superpowers/benchmarks/phase-2-config-comparison.md`. Install both via `npm i -g @biomejs/biome fallow` for the enhanced path; codelens works without them via rg fallback.
+- **Phase 0 preflight removed** — replaced 3 mandatory upfront dependency pings with graceful degradation. The Claude Code runtime already knows which MCP servers and CLI tools are loaded; per-tool errors now halt with install hints at the point of use instead of upfront. Saves 3 round-trips per review.
+- **Phase 4 report template extracted** — inlined 4.2KB template moved to `references/report-template.md`, read via `ctx_execute_file` at Phase 4 start. Net prompt change across all v0.0.4 edits: +72 tokens (1.3% increase over v0.0.3's 5,420) in exchange for substantially richer findings on quality, architecture, and accessibility domains.
+
+### Added
+
+- **Explicit JS/TS language scope** — Phase 1 now detects whether the target is JS/TS code. Non-JS/TS code receives a partial rg-only review with a "Language Support Note" section in the report explaining the gap. Multi-language tool integration (PHPStan for PHP, ruff for Python, etc.) is planned for v0.0.5+.
+- **Optional tools documented** — README now explains Biome and fallow as recommended-but-not-required installations.
+
+### Resolved smoke-test follow-ups
+
+- The v0.0.3 follow-up "doctor should verify each codelens MCP tool individually" remains open. Phase 0 graceful degradation makes this less critical (per-tool errors now surface at use, not at a doctor-time preflight), but `/codelens:doctor` still does not enumerate individual MCP tools.
+
+### Notes
+
+- **semgrep considered, dropped.** Validated semgrep 1.99.0 against both dockerize-react-app and my-portfolio across `--config auto`, `--config p/owasp-top-ten`, and combined react+typescript+javascript rulesets. semgrep found 0 findings on real code with actual security surface (env var exposure, `dangerouslySetInnerHTML`, `any`-typed catches). The existing rg security patterns catch these signals. semgrep's 2-minute pip install cost and 42% documented FPR (per `reports/codelens-reviewer-tool-validation.md`) did not justify inclusion.
+- **Omniroute routing deferred.** Model routing for agent execution (Omniroute vs default GLM) will be evaluated post-v0.0.4 with real benchmark numbers.
+
+---
+
 ## Unreleased
 
 ### Added (developer experience)

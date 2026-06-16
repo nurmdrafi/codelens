@@ -143,17 +143,15 @@ Evaluate against WCAG 2.1 AA:
 
 <workflow>
 
-## Phase 0: Dependency preflight (mandatory first 3 calls, in order)
+## Phase 0: Dependencies (graceful degradation, no upfront preflight)
 
-Before any other work, verify all three dependencies. Run these checks in this exact order. Each must PASS before continuing. ANY failure → halt immediately and report; do NOT proceed to Phase 1.
+The Claude Code runtime already knows which MCP servers and CLI tools are loaded — do NOT spend 3 round-trips pinging them upfront. Proceed directly to Phase 1. If any required tool returns an error during use, halt immediately with the matching install hint:
 
-**Check 1 — ripgrep (host Bash):** Run `rg --version` via the native Bash tool. On error or "command not found": halt with `[FAIL] ripgrep not installed. Install: brew install ripgrep (macOS) or sudo apt install ripgrep (Linux). Then run /codelens:doctor. Agent revoking execution.`
+- `rg` (ripgrep) missing → `[FAIL] ripgrep not installed. Install: brew install ripgrep (macOS) or sudo apt install ripgrep (Linux). Then /codelens:doctor. Agent revoking execution.`
+- `mcp__plugin_context-mode_context-mode__*` errors → `[FAIL] context-mode MCP not loaded. Install: /plugin marketplace add mksglu/context-mode then /plugin install context-mode. Then /codelens:doctor. Agent revoking execution.`
+- `mcp__plugin_context7_context7__*` errors → `[FAIL] Context7 MCP not loaded. Install: /plugin marketplace add upstash/context7 then /plugin install context7. Then /codelens:doctor. Agent revoking execution.`
 
-**Check 2 — context-mode MCP:** Call `mcp__plugin_context-mode_context-mode__ctx_stats` with no arguments. On error or empty response: halt with `[FAIL] context-mode MCP not loaded. Install: /plugin marketplace add mksglu/context-mode then /plugin install context-mode. Then run /codelens:doctor. Agent revoking execution.`
-
-**Check 3 — Context7 MCP:** Call `mcp__plugin_context7_context7__resolve-library-id` with `libraryName: "react"` and `query: "dependency preflight ping"`. On error or empty response: halt with `[FAIL] Context7 MCP not loaded. Install: /plugin marketplace add upstash/context7 then /plugin install context7. Then run /codelens:doctor. Agent revoking execution.`
-
-Do NOT substitute alternative tools for these checks. Do NOT skip a check because you believe it will fail. The order matters: `rg` first because Phase 1+2 depend on it most.
+Optional tool integrations (Biome, fallow) auto-detect at Phase 2. Missing optional tools silently fall back to rg — never halt.
 
 ## Phase 1: Inventory (Bash + one ctx_batch_execute)
 
@@ -177,6 +175,8 @@ rg --files <scopePath>
 
 Identify: total file count, top 10–15 hotspot candidates (largest + most complex), tech stack.
 
+**Language-scope detection (set a flag for Phase 2/4):** Examine the file count from Step A by extension. Compute `js_ts_files` = files matching `*.js|*.jsx|*.ts|*.tsx` and `other_files` = files matching `*.py|*.go|*.rs|*.java|*.php|*.rb|*.cs|*.c|*.cpp`. If `js_ts_files == 0` AND `other_files > 0`, set `languageScope = "non-JS/TS"` — Phase 2 must skip Biome/fallow probing (fall back to rg only) and Phase 4 must include the Language Support Note section. Otherwise `languageScope = "JS/TS"` — Biome/fallow probing proceeds normally.
+
 ## Phase 2: Pattern Analysis (per-rg Bash calls, inlined commands)
 
 First sub-step: **bake exclusions.** Read `.claude/codelens-exclusions.json` (relative to repo root). Build `EXCL` = the `-g '!<pattern>'` flags for `defaults` + `byDomain[<each requested domain>]`, minus `keepInScope` matches. If the file is missing, use a minimal fallback: `-g '!node_modules' -g '!dist' -g '!.next' -g '!*.min.js' -g '!*.min.css' -g '!*.map' -g '!package-lock.json' -g '!yarn.lock' -g '!pnpm-lock.yaml'`.
@@ -187,46 +187,44 @@ Build a list of rg commands. Run ONLY the commands whose domain is in `config.do
 
 **security commands** (run only if `"security"` in `config.domains`):
 ```bash
-rg --no-heading -n 'localStorage\.(getItem|setItem)' <scopePath> <EXCL>
-rg --no-heading -n 'dangerouslySetInnerHTML' <scopePath> <EXCL>
-rg --no-heading -n 'eval\(' <scopePath> <EXCL>
-rg --no-heading -n 'innerHTML|outerHTML' <scopePath> <EXCL>
-rg -i --no-heading -n 'SECRET|PASSWORD|API_KEY|TOKEN' <scopePath> <EXCL> | rg -v 'process\.env|\.env|config'
-rg --no-heading -n 'Authorization.*Bearer' <scopePath> <EXCL>
+rg --no-heading -n -e 'localStorage\.(getItem|setItem)' -e 'dangerouslySetInnerHTML' -e 'eval\(' -e 'innerHTML|outerHTML' -e 'Authorization.*Bearer' <scopePath> <EXCL>
+rg -i --no-heading -n -e 'SECRET' -e 'PASSWORD' -e 'API_KEY' -e 'TOKEN' <scopePath> <EXCL> | rg -v 'process\.env|\.env|config'
 ```
-Label each `codelens:security-patterns-N`.
+Label `codelens:security-patterns` + `codelens:security-secrets-filtered`.
 
-**architecture commands** (run only if `"architecture"` in `config.domains`):
+**architecture + quality + a11y (JS/TS projects):** Probe for Biome (`command -v biome`) AND fallow (`command -v fallow`). Combine:
+
+If Biome present (covers lint + a11y + format), run via `ctx_execute` with `intent: "codelens:biome"`:
+
 ```bash
-rg --count 'import.*from' <scopePath> <EXCL>
-rg --no-heading -n 'class.*extends.*Component' <scopePath> <EXCL>
-rg --count 'React\.memo|useMemo|useCallback' <scopePath> <EXCL>
-rg --count 'await ' <scopePath> <EXCL>
-rg --no-heading -n 'export default' <scopePath> <EXCL>
+biome lint <scopePath> --reporter=json --quiet 2>/dev/null || true
 ```
-Label each `codelens:arch-patterns-N`.
 
-**quality commands** (run only if `"quality"` in `config.domains`):
+Map Biome rule severities: `lint/a11y/*` → a11y domain (High typically); `lint/suspicious/*`, `lint/correctness/*` → Quality (rule-dependent); `lint/complexity/*` → Quality Medium; `lint/style/*` → Quality Low.
+
+If fallow present (covers dead-code, duplication, complexity, circular deps, architecture boundaries), run these via `ctx_execute`, each with `intent: "codelens:fallow-<subcommand>"`:
+
 ```bash
-rg --count 'console\.log' <scopePath> <EXCL>
-rg --count 'TODO|FIXME|HACK|XXX' <scopePath> <EXCL>
-rg --count 'eslint-disable' <scopePath> <EXCL>
-rg --no-heading -n 'catch\s*\([^)]*\)\s*\{\s*\}' <scopePath> <EXCL>
+fallow health --format json --quiet 2>/dev/null || true
+fallow dead-code --format json --quiet 2>/dev/null || true
+fallow dupes --format json --quiet 2>/dev/null || true
 ```
-Label each `codelens:quality-patterns-N`.
 
-**a11y commands** (run only if `"a11y"` in `config.domains`):
+Map fallow findings: `dead-code` → Quality Medium (cleanup); `dupes` → Quality Medium (DRY); `health.vital_signs.circular_dep_count > 0` → Architecture High; `hotspot_count > 0` → Architecture Medium; `maintainability_low_pct > 20` → Architecture Medium; boundary violations → Architecture High.
+
+If BOTH Biome and fallow are missing (or non-JS/TS), fall back to rg for everything:
+
 ```bash
-rg --count 'alt=' <scopePath> <EXCL>
-rg --count 'aria-label' <scopePath> <EXCL>
-rg --count 'aria-describedby' <scopePath> <EXCL>
-rg --count 'aria-live' <scopePath> <EXCL>
-rg --count 'role=' <scopePath> <EXCL>
+rg --count -e 'import.*from' -e 'React\.memo|useMemo|useCallback' -e 'await ' <scopePath> <EXCL>
+rg --no-heading -n -e 'class.*extends.*Component' -e 'export default' <scopePath> <EXCL>
+rg --count -e 'console\.log' -e 'TODO|FIXME|HACK|XXX' -e 'eslint-disable' <scopePath> <EXCL>
+rg --no-heading -n -e 'catch\s*\([^)]*\)\s*\{\s*\}' <scopePath> <EXCL>
+rg --count -e 'alt=' -e 'aria-label' -e 'aria-describedby' -e 'aria-live' -e 'role=' <scopePath> <EXCL>
+rg --no-heading -n -e '<Toaster' -e 'toast\(' <scopePath> <EXCL>
 rg --no-heading -n '<img' <scopePath> <EXCL> | rg -v 'alt='
-rg --no-heading -n '<button' <scopePath> <EXCL> | rg -v 'aria-label|>.*</button>'
-rg --no-heading -n '<Toaster|toast\(' <scopePath> <EXCL>
 ```
-Label each `codelens:a11y-patterns-N`.
+
+Label each `codelens:(arch|quality|a11y)-fallback-N`. Note in the report: "Dead-code and duplication analysis skipped — fallow not installed. Lint+a11y via rg fallback — Biome not installed."
 
 All results are auto-indexed by `ctx_batch_execute` (for non-rg commands) or surfaced via Bash output (for rg commands). You do NOT consume raw bytes — only previews/summaries come back. For rg-via-Bash output, use `ctx_search(queries: [...])` to retrieve specific matches without re-running.
 
@@ -302,77 +300,7 @@ If you need to re-verify a specific snippet from a hotspot during report compila
 
 Build the report in working memory, then `Write` to `config.outputFile` in one call. Then append one entry to `.codelens/reviews.json`.
 
-**Report structure (severity-first):**
-
-```markdown
-# Codebase Analysis Report: [project-name]
-
-**Date:** [date]
-**Stack:** [detected tech stack]
-**Domains:** [comma-separated list from config.domains]
-**Scope:** [config.scope: config.scopeTarget or "repo root"]
-
----
-
-## Executive Summary
-
-**Security:** [1-2 sentence posture with critical/high count, or "Not analyzed — not in requested domains"]
-**Architecture:** [same]
-**Code Quality:** [same]
-**Accessibility:** [same]
-
----
-
-## Critical ([count])
-
-| # | Domain | Issue | Location |
-|---|--------|-------|----------|
-
-### Details
-[For each Critical finding: title, OWASP/WCAG class, evidence (file:line + snippet), impact, fix]
-
----
-
-## High ([count])
-[Same format]
-
----
-
-## Medium ([count])
-[Same format]
-
----
-
-## Low ([count])
-[Same format]
-
----
-
-## Informational ([count])
-[Table only — no details subsection]
-
----
-
-## What's Done Well
-[Per-domain positive findings with file references, ONLY for domains in config.domains]
-
----
-
-## Priority Actions
-### Immediate (Week 1) — Critical
-### Short-Term (Week 2-3) — High
-### Medium-Term (Month 1)
-### Backlog
-
----
-
-## Methodology
-
-| Domain | Files Scanned | Focus |
-|--------|---------------|-------|
-
-Each requested domain performed rg pattern searches, analyzed top 10–15 hotspots via ctx_execute_file, and produced evidence-backed findings with file paths and code snippets. Findings were consolidated across requested domains and ranked by severities.
-```
+**Report structure:** Your FIRST action in Phase 4 must be to read the template: call `ctx_execute_file` with `path: "references/report-template.md"` and `intent: "codelens:report-template"`. The template defines the EXACT report structure you must follow — same title (`# Codebase Analysis Report: [project-name]`), same section order (Executive Summary → Critical → High → Medium → Low → Informational → What's Done Well → Priority Actions → Methodology → optional Language Support Note), same severity-header format (`## Critical ([count])` with the literal number). Do not invent your own format. Fill each `[placeholder]` with actual values from `config` and phase results. Include the Language Support Note section ONLY when Phase 1 detected the primary language is not JS/TS.
 
 **Cross-domain dedup:** if the same `file:line` (±2 lines) appears in findings from multiple domains, merge into a single row listing all relevant domains.
 
