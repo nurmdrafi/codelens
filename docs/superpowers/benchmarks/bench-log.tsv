@@ -26,3 +26,8 @@ phase4-smoke	5439	96	214029	199230	9	1	cheap	0	./src
 v004-final	5492	78	225620	188568	9	0	cheap	0	./src
 cleanup-verify	5492	126	348694	223969	14	2	cheap	0	./src
 v004-e2e-portfolio	5492	146	347231	336800	34	7	full	0	./src
+v004-validation	5420	120	194519	193395	13	3	cheap	0	./components
+akg-rg-baseline	5420	0	850	0	37	0	cheap	0	./components
+akg-biome	5570	0	85	0	550	95	cheap	0	./components
+akg-fallow-dead	5659	0	210	0	83	1	cheap	0	./components
+akg-fallow-health	5659	0	410	0	141	0	cheap	0	./components

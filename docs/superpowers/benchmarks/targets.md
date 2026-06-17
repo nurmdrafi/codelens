@@ -72,8 +72,43 @@ rm -rf /home/nurmdrafi/Desktop/MyProject/dockerize-react-app/.codelens
   dockerize-react-app produces a thin baseline. The guard threshold (20% findings
   drop) applies independently per target.
 
-## Adding a third target later
+## Tertiary target — akg-frontend
 
-If v0.0.4 surfaces a need for broader signal (e.g., a Python repo to validate
-non-JS rg patterns), append a new section here following the same template. Pin the
-commit. Do not benchmark against an unpinned target.
+- **Path:** `/Users/nur/Barikoi/akg-frontend`
+- **Pinned commit:** `bc56e62616855076bfc2c317bd0c6f341ed1bf3b` (branch `main`)
+- **Stack:** Next.js 15.5 + React 19 + TypeScript + Ant Design + shadcn
+- **Cheap-scope path:** `./components` (React patterns, realistic complexity)
+- **Why tertiary:** Production codebase, modern stack validates Biome on TSX, tests React 19 patterns
+
+### Run cheap shape
+
+```bash
+./scripts/bench-phase.sh <phase-label> /Users/nur/Barikoi/akg-frontend cheap ./components
+```
+
+### Run full shape
+
+```bash
+./scripts/bench-phase.sh <phase-label> /Users/nur/Barikoi/akg-frontend full
+```
+
+### Refresh procedure (run before each phase)
+
+```bash
+cd /Users/nur/Barikoi/akg-frontend && git reset --hard bc56e62616855076bfc2c317bd0c6f341ed1bf3b
+```
+
+Clean codelens side-effects:
+
+```bash
+rm -f /Users/nur/Barikoi/akg-frontend/CODEBASE_ANALYSIS_REPORT.md
+rm -rf /Users/nur/Barikoi/akg-frontend/.codelens
+```
+
+---
+
+## Adding more targets later
+
+If v0.0.5+ needs broader signal (e.g., a Python repo to validate non-JS rg patterns),
+append a new section here following the same template. Pin the commit.
+Do not benchmark against an unpinned target.

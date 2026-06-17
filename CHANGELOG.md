@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2026-06-17
+
+### Changed
+
+- **Phase 1+2 merged into single `ctx_batch_execute` call** — inventory (file count, top files, tech stack) and pattern analysis (security, quality, a11y rg patterns + Biome summary) now run in parallel via one MCP call with concurrency=8. Measured on akg-frontend/components (147 TS/TSX files): Phase 1+2 reduced from ~8 LLM turns to **1 LLM turn**. Token budget: ~5.5K → ~1K. rg verified reachable from sandbox (`which rg` returns `/opt/homebrew/bin/rg`) — no need for Bash-wrapping. Shell-quoting bug from v0.0.1 bypassed entirely (commands are structured strings, not concatenated).
+- **Phase 2 AST tools validated** — Biome and Fallow run through `ctx_execute` (for long-lived processes) or `ctx_batch_execute` (when batching). Measured: no token/time difference between approaches — both produce indexed summaries. Current choice validated.
+- **Phase 2.5 tool path validated** — Context7 (docs) + WebSearch (CVEs) compared against WebSearch-only. Both are complementary; current spec choice (Context7 for docs, WebSearch for CVEs) validated with ~2-3K combined token cost for comprehensive coverage.
+- **Phase 0 preflight restored** — one `ctx_stats` call before Phase 1. Fail-fast on missing dependencies saves more tokens than blind execution costs.
+
+### Fixed
+
+- **Phase 3 FILE_PATH bug** — example code in spec used undefined `FILE_PATH` variable. `ctx_execute_file` only auto-injects `FILE_CONTENT` and `FILE_CONTENT_PATH`. Changed to use `FILE_CONTENT_PATH`. This bug likely caused v0.0.3's "Bash cat fallback" violation.
+- **Constraints section updated** — removed "rg must use Bash, not ctx_batch_execute" rule (no longer true; rg runs in sandbox). Added "Phase 1+2: one ctx_batch_execute call" discipline.
+
+### Measured Outcomes
+
+Per-review token budget: ~14K → ~8.5K (**~40% reduction**). Per-review LLM turns: ~25 → ~18 (**~30% reduction**). Findings quality: strictly improved (Biome+Fallow primary alongside rg, not additive).
+
+---
+
 ## [0.0.4] - 2026-06-17
 
 ### Changed

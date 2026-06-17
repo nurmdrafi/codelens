@@ -4,7 +4,7 @@
 
 codelens is a Claude Code plugin for multi-domain code review. It scans codebases across four domains — security, architecture, code quality, accessibility — and produces a severity-first Markdown report.
 
-Current version: **0.0.3 (beta)**. Architecture: single agent + 2 thin skill dispatchers (`/codelens:review`, `/codelens:doctor`).
+Current version: **0.0.5 (beta)**. Architecture: single agent + 2 thin skill dispatchers (`/codelens:review`, `/codelens:doctor`).
 
 ## Tech Stack
 
@@ -17,15 +17,16 @@ Markdown only — skills, agents, configs. No build step, no runtime dependencie
   → reads $ARGUMENTS, infers {domains, scope, scopeTarget, outputFile}
   → AskUserQuestion fallback when bare/ambiguous
   → codelens-reviewer agent (single invocation, ~400 lines):
-      Phase 0: Dependency preflight (rg + ctx_stats + Context7, mandatory first 3 calls)
-      Phase 1: Inventory (Bash rg --files + ctx_batch_execute: wc -l, top-30, tech-stack)
-      Phase 2: Patterns (per-rg Bash calls, inlined commands, filtered by config.domains)
+      Phase 0: Dependency preflight (ctx_stats only — fail-fast on missing MCP)
+      Phase 1+2: Inventory + Patterns (ONE ctx_batch_execute call, concurrency=8)
       Phase 2.5: Doc/CVE verify (on-flag only, Context7 + WebSearch)
       Phase 3: Hotspots (ctx_execute_file × 10–15, single-pass, all domains per file)
       Phase 4: Compile (Write report + append to .codelens/reviews.json)
 ```
 
 The agent is **stateless**: no persisted intermediate JSON, no checkpoints, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body (matching `references/codebase-analyzer.md`).
+
+**v0.0.5 optimization:** Phase 1 + Phase 2 merged into a single `ctx_batch_execute` call (1 LLM turn vs ~8 in v0.0.4). Phase 0 reduced to one `ctx_stats` call. Token budget: ~8.5K per review vs ~14K in v0.0.4 (~40% reduction).
 
 ## Hard Dependencies
 
