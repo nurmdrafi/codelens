@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codelens.local/schema/reviews-entry.schema.json",
+  "title": "Codelens Reviews Entry",
+  "description": "Structured, abstracted entry appended to .codelens/reviews.json per review. No tool names, no plugin names, no money/cost figures. The agent MUST emit this exact shape for every review.",
+
+  "type": "object",
+  "required": [
+    "timestamp",
+    "command",
+    "scope",
+    "summary",
+    "status",
+    "reportPath",
+    "reviewerVersion",
+    "findings",
+    "performance",
+    "analysisCoverage",
+    "codebaseStats",
+    "resourceUsage",
+    "visualBreakdown"
+  ],
+  "additionalProperties": false,
+
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC."
+    },
+    "command": {
+      "type": "string",
+      "pattern": "^/review",
+      "description": "Generic invocation form. Never expose slash-command prefixes tied to a plugin. Example: '/review src/auth'."
+    },
+    "scope": {
+      "type": "string",
+      "description": "full | path:<target> | diff:<target>"
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 240,
+      "description": "One sentence executive summary with top-severity counts."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["success", "partial", "failed"]
+    },
+    "reportPath": {
+      "type": "string",
+      "description": "Relative path to the markdown report file produced by this review."
+    },
+    "reviewerVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Agent's own semantic version. Never third-party tool versions."
+    },
+
+    "findings": {
+      "type": "object",
+      "required": ["bySeverity", "byDomain", "staticAnalyzer", "typeCheck", "deepDive"],
+      "additionalProperties": false,
+      "properties": {
+        "bySeverity": {
+          "type": "object",
+          "required": ["critical", "high", "medium", "low", "informational", "total"],
+          "additionalProperties": false,
+          "properties": {
+            "critical": { "type": "integer", "minimum": 0 },
+            "high": { "type": "integer", "minimum": 0 },
+            "medium": { "type": "integer", "minimum": 0 },
+            "low": { "type": "integer", "minimum": 0 },
+            "informational": { "type": "integer", "minimum": 0 },
+            "total": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "byDomain": {
+          "type": "object",
+          "required": ["security", "accessibility", "quality", "architecture", "performance", "informational"],
+          "additionalProperties": false,
+          "properties": {
+            "security": { "type": "integer", "minimum": 0 },
+            "accessibility": { "type": "integer", "minimum": 0 },
+            "quality": { "type": "integer", "minimum": 0 },
+            "architecture": { "type": "integer", "minimum": 0 },
+            "performance": { "type": "integer", "minimum": 0 },
+            "informational": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "staticAnalyzer": {
+          "type": "object",
+          "required": ["errors", "warnings", "infos", "uniqueFilesAffected", "topCategories"],
+          "additionalProperties": false,
+          "properties": {
+            "errors": { "type": "integer", "minimum": 0 },
+            "warnings": { "type": "integer", "minimum": 0 },
+            "infos": { "type": "integer", "minimum": 0 },
+            "uniqueFilesAffected": { "type": "integer", "minimum": 0 },
+            "topCategories": {
+              "type": "array",
+              "description": "Top N rule categories by frequency. Names are semantic — never include tool-specific prefixes (no 'lint/', 'TS', 'noX').",
+              "items": {
+                "type": "object",
+                "required": ["rule", "count", "severity"],
+                "additionalProperties": false,
+                "properties": {
+                  "rule": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-zA-Z]+/[a-z][a-zA-Z]+$",
+                    "description": "Semantic category/rule. Example: 'a11y/buttonType', 'style/importType', 'security/unsafeHtml'."
+                  },
+                  "count": { "type": "integer", "minimum": 1 },
+                  "severity": { "type": "string", "enum": ["error", "warning", "info"] }
+                }
+              }
+            }
+          }
+        },
+        "typeCheck": {
+          "type": "object",
+          "required": ["sourceErrors"],
+          "additionalProperties": false,
+          "properties": {
+            "sourceErrors": { "type": "integer", "minimum": 0 },
+            "generatedBuildArtifactErrors": { "type": "integer", "minimum": 0 },
+            "note": { "type": "string", "maxLength": 240 }
+          }
+        },
+        "deepDive": {
+          "type": "object",
+          "required": ["hotspotsScanned", "patternsPerHotspot", "totalChecks", "findings", "byPattern", "byFile"],
+          "additionalProperties": false,
+          "properties": {
+            "hotspotsScanned": { "type": "integer", "minimum": 0 },
+            "patternsPerHotspot": { "type": "integer", "minimum": 0 },
+            "totalChecks": { "type": "integer", "minimum": 0 },
+            "findings": { "type": "integer", "minimum": 0 },
+            "byPattern": {
+              "type": "object",
+              "description": "Pattern name → match count. Pattern names are semantic (e.g. 'button-without-aria', 'unsafe-html-injection').",
+              "additionalProperties": { "type": "integer", "minimum": 0 }
+            },
+            "byFile": {
+              "type": "object",
+              "description": "File path → match count.",
+              "additionalProperties": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+
+    "performance": {
+      "type": "object",
+      "required": ["inventoryWallClockMs", "deepDiveWallClockMs", "deepDiveAnalysisTurns", "typeCheckWallClockMs"],
+      "additionalProperties": false,
+      "properties": {
+        "inventoryWallClockMs": { "type": "integer", "minimum": 0 },
+        "inventoryWallClockNote": { "type": "string" },
+        "deepDiveWallClockMs": { "type": "integer", "minimum": 0 },
+        "deepDiveSpeedupVsPriorVersion": { "type": "string" },
+        "deepDiveAnalysisTurns": { "type": "integer", "minimum": 0 },
+        "deepDiveTurnsReduction": { "type": "string" },
+        "typeCheckWallClockMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "analysisCoverage": {
+      "type": "object",
+      "required": ["search", "versionControl", "staticAnalyzer", "typeChecker", "astAnalysis", "deadCode", "contextOptimization"],
+      "additionalProperties": false,
+      "properties": {
+        "search": { "$ref": "#/$defs/coverageEntry" },
+        "versionControl": { "$ref": "#/$defs/coverageEntry" },
+        "staticAnalyzer": { "$ref": "#/$defs/coverageEntryWithData" },
+        "typeChecker": { "$ref": "#/$defs/coverageEntryWithData" },
+        "astAnalysis": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "type": "string", "enum": ["ok", "missing", "installed-not-invoked"] },
+            "fallback": { "type": "string" }
+          }
+        },
+        "deadCode": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "type": "string", "enum": ["ok", "missing", "installed-not-invoked"] }
+          }
+        },
+        "contextOptimization": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "type": "string", "enum": ["ok", "missing"] },
+            "calls": { "type": "integer", "minimum": 0 },
+            "bytesSaved": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "codebaseStats": {
+      "type": "object",
+      "required": ["totalFiles", "sourceFilesScanned", "techStack", "topHotspots"],
+      "additionalProperties": false,
+      "properties": {
+        "totalFiles": { "type": "integer", "minimum": 0 },
+        "sourceFilesScanned": { "type": "integer", "minimum": 0 },
+        "techStack": {
+          "type": "object",
+          "required": ["framework"],
+          "additionalProperties": { "type": "string" },
+          "properties": {
+            "framework": { "type": "string" },
+            "react": { "type": "string" },
+            "ui": { "type": "string" },
+            "styling": { "type": "string" },
+            "node": { "type": "string" }
+          }
+        },
+        "topHotspots": {
+          "type": "array",
+          "maxItems": 15,
+          "items": {
+            "type": "object",
+            "required": ["file", "loc"],
+            "additionalProperties": false,
+            "properties": {
+              "file": { "type": "string" },
+              "loc": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+
+    "resourceUsage": {
+      "type": "object",
+      "required": ["reviewBytes", "targetBudget", "withinBudget", "sessionSavings"],
+      "additionalProperties": false,
+      "description": "NO money/cost fields. Bytes only.",
+      "properties": {
+        "reviewBytes": { "type": "string", "description": "Humanized, e.g. '12K'." },
+        "targetBudget": { "type": "string" },
+        "withinBudget": { "type": "boolean" },
+        "sessionSavings": {
+          "type": "object",
+          "required": ["bytesKept", "reductionPct"],
+          "additionalProperties": false,
+          "properties": {
+            "bytesKept": { "type": "string" },
+            "reductionPct": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        }
+      }
+    },
+
+    "visualBreakdown": {
+      "type": "object",
+      "required": ["severityBar", "domainPie", "staticAnalyzerDistribution", "topHotspotConcentration"],
+      "additionalProperties": false,
+      "description": "Pre-rendered text-based visualizations using Unicode block characters (█).",
+      "properties": {
+        "severityBar": { "type": "string" },
+        "domainPie": { "type": "string" },
+        "staticAnalyzerDistribution": { "type": "string" },
+        "topHotspotConcentration": { "type": "string" }
+      }
+    }
+  },
+
+  "$defs": {
+    "coverageEntry": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "missing"] }
+      }
+    },
+    "coverageEntryWithData": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "missing"] },
+        "filesChecked": { "type": "integer", "minimum": 0 },
+        "diagnostics": { "type": "integer", "minimum": 0 },
+        "sourceErrors": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
