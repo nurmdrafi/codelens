@@ -127,17 +127,17 @@ Sandboxed file processing that prevents context window flooding during large-sca
 
 This runs setup diagnostics and prints `[OK]`/`[WARN]`/`[FAIL]` status for each dependency, with concrete fix commands for anything missing or misconfigured.
 
-## Optional Tools (recommended, not required)
+## Optional Tools
 
-codelens v0.0.4+ integrates two purpose-built tools when installed, falling back to rg patterns when not. **Both install in under a minute via npm** and significantly improve finding quality on JS/TS codebases:
+codelens v0.0.7+ integrates **four** purpose-built tools when installed, falling back to rg patterns when not. All install in under a minute via npm and meaningfully improve finding quality on JS/TS codebases. None are required — codelens runs to completion with zero optional tools installed.
 
-### Biome (lint + accessibility)
+### Biome (lint + accessibility + complexity)
 
 ```bash
 npm install -g @biomejs/biome
 ```
 
-Replaces hand-written rg patterns for code quality and accessibility with 491 lint rules including 15+ JSX/HTML a11y checks. Catches SVG accessibility issues, suspicious patterns, and complexity problems rg patterns miss.
+Provides 490+ lint rules covering correctness, suspicious patterns, complexity, performance, style, and 15+ JSX/HTML accessibility checks. In Phase 2 the agent pipes Biome's JSON output for the complexity signal used in hotspot ranking; in Phase 4 the rule categories map to severity (a11y → High, correctness/suspicious → Quality, complexity → Medium, style → Low). Catches SVG accessibility, noArrayIndexKey, noDangerouslySetInnerHtml, and many others rg patterns miss.
 
 ### fallow (codebase intelligence)
 
@@ -145,11 +145,35 @@ Replaces hand-written rg patterns for code quality and accessibility with 491 li
 npm install -g fallow
 ```
 
-Adds AST-based analysis rg cannot do: unused files/exports/dependencies (dead-code), token-based duplication detection, complexity hotspot scoring, circular dependency detection, and architecture boundary violations. Rust-native, sub-second on most projects.
+Rust-native AST analysis. Adds dead-code detection (unused files/exports/dependencies), token-based duplication, complexity hotspot scoring, circular dependency detection, and a project maintainability health score. Phase 2 runs three fallow subcommands (`dead-code`, `health`, `dupes`); Phase 4 maps the outputs — circular deps → Architecture High, low maintainability → Architecture Medium, dead-code/dupes → Quality Medium.
+
+### TypeScript Compiler (semantic type analysis)
+
+```bash
+# project-local (recommended — matches your tsconfig)
+npm install -D typescript
+```
+
+Adds TypeScript semantic analysis that static linters cannot reach. Phase 2 runs `tsc --noEmit --skipLibCheck` (tries `./node_modules/.bin/tsc` first, falls back to `npx --package=typescript tsc`). Phase 4 maps: `TS2xxx` type errors and `TS2531/2532` null/undefined dereference → Quality High; `TS6133` unused locals and `TS2304/2307` missing name/module → Quality Medium.
+
+### ast-grep (structural search)
+
+```bash
+npm install -g @ast-grep/cli
+```
+
+AST-based pattern matching — understands JSX/TS syntax rather than treating code as text. Phase 3 uses ast-grep for the per-hotspot deep-dive (xss/eval/empty-catch/a11y patterns). When ast-grep is missing, Phase 3 transparently falls back to rg via an availability check (`command -v sg`). Findings are still produced — just line-based rather than syntax-aware, so precision on edge cases (e.g. `dangerouslySetInnerHTML` inside string literals) is lower.
 
 ### Without these tools
 
-codelens works fine without Biome and fallow installed — Phase 2 falls back to rg patterns and the report notes "dead-code and duplication analysis skipped — install fallow for full coverage." No errors, no degraded core review.
+codelens runs fine with any subset (or none) installed. Per-tool fallback behavior:
+
+- **Biome missing** → complexity signal zeroed, hotspot ranking re-weights the remaining three signals (loc, finding density, import centrality). Lint/a11y findings via rg patterns.
+- **fallow missing** → dead-code, duplication, and maintainability signals skipped. Report notes the gap.
+- **TypeScript missing** → no TS semantic findings. JS-only codebases are unaffected.
+- **ast-grep missing** → Phase 3 uses rg fallback. Same finding categories, slightly lower precision.
+
+No errors, no degraded core review — just narrower coverage. Run `/codelens:doctor` to see which optional tools are detected.
 
 ## Commands
 
