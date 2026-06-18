@@ -1,11 +1,11 @@
-# Codelens Output Schemas — Internal Spec
+# Codelens Output Templates
 
-> **Internal.** Not user-facing. The agent consults this + the JSON Schema files when emitting any structured output.
+Output contracts the agent fills in at Phase 4. Both shapes live in this folder:
 
-## Files
+- **[`report.md`](./report.md)** — Markdown report template (placeholder skeleton with a fully-worked example embedded). The agent consults this at Phase 4 via `ctx_execute_file`.
+- **[`reviews-entry.json`](./reviews-entry.json)** — Minimal 6-field shape appended to `.codelens/reviews.json` per review. One object per completed review.
 
-- **[`reviews-entry.schema.json`](./reviews-entry.schema.json)** — JSON Schema for entries appended to `.codelens/reviews.json`. Every review appends exactly one object that conforms.
-- **[`report-template.md`](./report-template.md)** — Markdown template for the human-readable report. Currently lives at `examples/sample-report.md`; will be consolidated here.
+The rules and translation maps below apply to **both** outputs.
 
 ## Abstraction rules (apply to ALL output)
 
@@ -21,24 +21,26 @@ These rules are mandatory; deviations are bugs.
    - `lint/suspicious/noArrayIndexKey` → `suspicious/arrayIndexKey`
    - `TS2322`, `TS6133`, etc. → `typeError/typeMismatch`, `typeError/unusedLocal` (preserve semantic)
 5. **Generic command form.** Use `/review ...` not `/codelens:review ...`. Use `/doctor` not `/codelens:doctor`.
-6. **Self-version only.** `reviewerVersion` is the agent's own semver (e.g. `0.0.7`). Never emit third-party tool versions.
+6. **Self-version only.** `reviewerVersion` is the agent's own semver (e.g. `0.0.8`). Never emit third-party tool versions.
 
 ## Agent integration
 
 ```
 Phase 4 → "Compile Report"
-  ├── Read schema/reviews-entry.schema.json
-  ├── Read schema/report-template.md (or examples/sample-report.md until consolidated)
+  ├── Read templates/reviews-entry.json (6-field entry shape)
+  ├── Read templates/report.md (template + fully-worked example)
   ├── Build markdown report following the template
-  ├── Build reviews.json entry conforming to the schema
+  ├── Build reviews.json entry conforming to the 6-field shape
   └── Append entry to .codelens/reviews.json
 ```
 
-**Validation:** the agent MUST NOT append an entry that fails schema validation. If a field can't be populated (e.g., tool missing), set its value to `0` / `"unknown"` / empty array per the schema's allowance — never invent data.
+All 6 entry fields (`timestamp`, `scope`, `summary`, `findings`, `reportPath`, `reviewerVersion`) are always populatable from the review's runtime state. No fallback-to-zero / unknown handling needed.
 
-## Pattern name translation map (Phase 3 → schema keys)
+## Pattern name translation map (Phase 3 → report)
 
-| Phase 3 internal label | Schema `deepDive.byPattern` key |
+> These names appear in the **markdown report**'s Standard column and finding titles. The minimal reviews.json log no longer carries them as structured fields — they live in the report only.
+
+| Phase 3 internal label | Report pattern name |
 |---|---|
 | `ag-xss-innerhtml` | `unsafe-html-injection` |
 | `ag-xss-eval` | `dynamic-code-exec` |
@@ -49,7 +51,9 @@ Phase 4 → "Compile Report"
 
 ## Static analyzer category translation map
 
-| Source rule (tool) | Schema `staticAnalyzer.topCategories[].rule` |
+> These names appear in the **markdown report**'s Standard column. The minimal reviews.json log no longer carries them as structured fields — they live in the report only.
+
+| Source rule (tool) | Report category name |
 |---|---|
 | `lint/a11y/useButtonType` | `a11y/buttonType` |
 | `lint/a11y/noSvgWithoutTitle` | `a11y/svgTitle` |
@@ -74,7 +78,7 @@ Phase 4 → "Compile Report"
 | `lint/performance/noImgElement` | `performance/imgElement` |
 
 For TS error codes:
-| Source code | Schema rule |
+| Source code | Report name |
 |---|---|
 | `TS2322` (type mismatch) | `typeError/typeMismatch` |
 | `TS6133` (unused) | `typeError/unusedLocal` |

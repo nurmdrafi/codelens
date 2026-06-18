@@ -45,7 +45,7 @@ The 2 `/codelens:*` skills are thin dispatch wrappers. `/codelens:review` resolv
 |-------|----------------|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, adding patterns, proposing domains, testing locally |
 | [CLAUDE.md](CLAUDE.md) | Project architecture, conventions, constraints, common workflows |
-| [examples/sample-report.md](examples/sample-report.md) | Full anonymized report from a real project (62 findings) |
+| [templates/report.md](templates/report.md) | Report template with embedded worked example — the shape every review follows |
 | [CHANGELOG.md](CHANGELOG.md) | Release history and version changes |
 
 ---
@@ -216,7 +216,7 @@ Presets define domain + scope combinations referenced by name in your prompt. `/
 | `a11y-audit` | accessibility | full |
 | `full-audit` | all | full |
 
-Create `.claude/review-presets.json` in your project to override or add presets:
+Create `config/presets.json` in your project to override or add presets:
 
 ```json
 {
@@ -258,13 +258,13 @@ This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/r
 
 **Phase 1 — Inventory:** Maps the scoped file set (`rg --files`, line counts, tech-stack) via one `ctx_batch_execute`. Resolves `scopePath` from `config.scope`.
 
-**Phase 2 — Pattern Analysis:** Reads `.claude/codelens-exclusions.json` once and bakes exclusions into `-g '!...'` flags. Runs the per-domain rg commands **inlined in the agent body** — filtered by `config.domains`. Results auto-indexed; previews enter context, raw bytes stay out.
+**Phase 2 — Pattern Analysis:** Reads `config/exclusions.json` once and bakes exclusions into `-g '!...'` flags. Runs the per-domain rg commands **inlined in the agent body** — filtered by `config.domains`. Results auto-indexed; previews enter context, raw bytes stay out.
 
 **Phase 2.5 — Doc & CVE Verification (on-flag):** Context7 + WebSearch only when Phase 2 flags suspect libraries. Skipped entirely if nothing flag-worthy was found.
 
 **Phase 3 — Hotspot Deep-Dive (single-pass):** For the top 10–15 largest files, ONE `ctx_execute_file` call per file. Processing code reads `config.domains` and runs `if (CHECKS.includes("security")) {...}` branches — only requested domains' signals extracted. Files are read **exactly once**.
 
-**Phase 4 — Compile Report:** Native `Write` to the report file at repo root. Severity-first ordering, cross-domain dedup (same `file:line` ±2 lines merged). Appends one 6-field entry to `.codelens/reviews.json` (timestamp, command, scope, summary, status, reportPath).
+**Phase 4 — Compile Report:** Native `Write` to the report file at repo root. Severity-first ordering, cross-domain dedup (same `file:line` ±2 lines merged). Appends one 6-field entry to `.codelens/reviews.json` (`timestamp`, `scope`, `summary`, `findings`, `reportPath`, `reviewerVersion`).
 
 The agent is **stateless**: no persisted intermediate JSON, no checkpoints, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body.
 
@@ -306,7 +306,7 @@ codelens produces a severity-first markdown report at your project root:
 - **Fix:** Generate with `openssl rand -base64 48`. Rotate immediately.
 ```
 
-See [`examples/sample-report.md`](examples/sample-report.md) for a full anonymized report from a real project (62 total findings).
+See [`templates/report.md`](templates/report.md) for the report template — includes a fully-worked example at the bottom showing the exact shape every review follows.
 
 ## Troubleshooting
 
@@ -335,7 +335,7 @@ The `codelens-reviewer` agent needs Context7 for library verification. Install i
 ### Too many false positives
 - Use path scope: `/codelens:review security src/specific-path` to narrow scope
 - Edit the criteria blocks in `agents/codelens-reviewer.md` to remove patterns that don't apply to your stack
-- Create a `.claude/review-presets.json` with domains relevant to your project
+- Create a `config/presets.json` with domains relevant to your project
 
 ### Review is slow on large repos
 - Use path scope: `/codelens:review src/module` instead of scanning the whole repo
@@ -376,11 +376,19 @@ codelens/
 │       └── SKILL.md           # /codelens:doctor
 ├── agents/
 │   └── codelens-reviewer.md   # Single domain-aware agent (scans, analyzes, compiles)
-├── .claude/
-│   ├── review-presets.json    # Default presets
-│   └── codelens-exclusions.json # Exclusion patterns (defaults + byDomain + keepInScope)
-├── examples/
-│   └── sample-report.md       # Anonymized real report
+├── config/
+│   ├── presets.json           # Default presets (pr-check, a11y-audit, full-audit)
+│   └── exclusions.json        # Exclusion patterns (defaults + byDomain + keepInScope)
+├── templates/                   # Output contracts (agent-loaded at Phase 4)
+│   ├── report.md              # Markdown report template (placeholder skeleton)
+│   ├── reviews-entry.json     # Minimal 6-field entry shape for .codelens/reviews.json
+│   └── README.md              # Abstraction rules + translation maps
+├── references/                   # Local-only design references (gitignored)
+│   └── codebase-analyzer.md   # Structural pattern the agent body follows
+├── scripts/
+│   ├── bench-phase.sh         # Benchmark harness
+│   └── bench-mcp-settings.json  # MCP allowlist for headless bench runs
+├── archive/                   # Prior-version artifacts (shipped for reference)
 ├── CLAUDE.md                  # Project instructions for Claude Code
 └── CONTRIBUTING.md            # Contribution guidelines
 ```
@@ -388,13 +396,13 @@ codelens/
 ## Customization
 
 ### Add/Modify Presets
-Edit `.claude/review-presets.json` in your project.
+Edit `config/presets.json` in your project.
 
 ### Modify Domain Criteria
 All four domains' criteria live in `agents/codelens-reviewer.md` as `<security-criteria>`, `<architecture-criteria>`, `<code-quality-criteria>`, `<accessibility-criteria>` blocks. Edit the relevant block to add/remove checks.
 
 ### Report Format
-The report template is inlined in `agents/codelens-reviewer.md` Phase 4. Modify sections, severity names, or output format there.
+The report template lives at `templates/report.md` — a placeholder skeleton with a fully-worked example embedded. The agent loads it at Phase 4 and pattern-matches against the example. Modify section structure, severity names, or output format there.
 
 ## Contributing
 

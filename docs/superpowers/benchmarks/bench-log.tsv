@@ -31,3 +31,6 @@ akg-rg-baseline	5420	0	850	0	37	0	cheap	0	./components
 akg-biome	5570	0	85	0	550	95	cheap	0	./components
 akg-fallow-dead	5659	0	210	0	83	1	cheap	0	./components
 akg-fallow-health	5659	0	410	0	141	0	cheap	0	./components
+v0.0.8-smoke	6019	45	287086	231995	23	5	full	0	./src
+v0.0.9-smoke	7272	53	276822	233303	25	7	full	0	./src
+v0.0.9-smoke-r2	7393	96	579228	333832	20	8	full	0	./src

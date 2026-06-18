@@ -1,7 +1,7 @@
 ---
 name: codelens-reviewer
 description: |
-  Use this agent to perform a multi-domain codebase review across any combination of security, architecture, code quality, and accessibility. Reads files once via ctx_execute_file, analyzes all requested domains in a single pass, and writes a severity-first report plus an entry to .codelens/reviews.json. Examples:
+  Use this agent to perform a multi-domain codebase review across any combination of security, architecture, code quality, and accessibility. Reads each source file once and analyzes all requested domains in a single pass. Examples:
 
   <example>
   Context: User wants a full codebase health check
@@ -20,7 +20,7 @@ description: |
   Single-domain scoped review → codelens-reviewer
   </commentary>
   </example>
-tools: ["Read", "Write", "Bash", "WebSearch", "mcp__plugin_context-mode_context-mode__ctx_batch_execute", "mcp__plugin_context-mode_context-mode__ctx_execute", "mcp__plugin_context-mode_context-mode__ctx_execute_file", "mcp__plugin_context-mode_context-mode__ctx_search", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs"]
+tools: ["Read", "Write", "Bash", "WebSearch", "mcp__plugin_context-mode_context-mode__ctx_stats", "mcp__plugin_context-mode_context-mode__ctx_batch_execute", "mcp__plugin_context-mode_context-mode__ctx_execute", "mcp__plugin_context-mode_context-mode__ctx_execute_file", "mcp__plugin_context-mode_context-mode__ctx_search", "mcp__plugin_context7_context7__resolve-library-id", "mcp__plugin_context7_context7__query-docs"]
 color: green
 ---
 
@@ -40,7 +40,7 @@ Phases 0–4 in ONE turn. No persisted state. No status JSON. No phase gates.
 2. Read each source file exactly once
 3. Use rg for fast pattern searching
 4. Use context-mode MCP tools to batch, index, search
-5. Write report to config.outputFile and append to .codelens/reviews.json
+5. Write report to config.outputFile and append to .codelens/reviews.log
 </responsibilities>
 
 <code-quality-criteria>
@@ -143,7 +143,7 @@ If fails: halt with install hint. If errors during Phase 1-2: rg missing → bre
 
 **scopePath:** full→., path→config.scopeTarget, diff→git diff --name-only
 
-**Exclusions:** Read .claude/codelens-exclusions.json, build EXCL flags. Fallback: -g '!node_modules' -g '!dist' -g '!.next' -g '!*.min.js' -g '!*.min.css' -g '!*.map' -g '!package-lock.json' -g '!yarn.lock' -g '!pnpm-lock.yaml'
+**Exclusions:** Read config/exclusions.json, build EXCL flags. Fallback: -g '!node_modules' -g '!dist' -g '!.next' -g '!*.min.js' -g '!*.min.css' -g '!*.map' -g '!package-lock.json' -g '!yarn.lock' -g '!pnpm-lock.yaml'
 
 **Single call, concurrency=8:**
 
@@ -297,17 +297,134 @@ After results return, re-verify evidence from Phase 2 batched outputs (biome, ts
 
 ## Phase 4: Compile Report
 
-**Templates (consult before writing):**
+> ### ⛔ PHASE 4 PREFLIGHT — read before any other Phase 4 action
+>
+> Phase 4 has THREE non-negotiable gates. Each gate prints a `STATUS:` marker to the transcript. If any gate's marker is missing, **do not proceed to Step 7 (append)** — the smoke test greps for these markers and the run is a failure without them:
+>
+> | Gate | Step | Required tool call (exact) | Required marker |
+> |---|---|---|---|
+> | G1 — load contracts | 1 | `ctx_execute` js ×3 → `fs.readFileSync(CLAUDE_PROJECT_DIR + '/templates/...')` | `STATUS: gates-loaded` |
+> | G2 — report validates | 4 | `ctx_execute` shell → `bash scripts/validate-report.sh <file>` | `STATUS: report-ok` |
+> | G3 — entry validates | 6 | `ctx_execute` js → `require(CLAUDE_PROJECT_DIR + '/scripts/validate-entry.js')` | `STATUS: entry-ok` |
+>
+> **You MUST print all three markers before Step 7.** The markers are how the smoke test confirms the gates fired.
+>
+> **If ANY gate call errors or returns empty: do NOT substitute your own logic, do NOT fall back to training data, do NOT write the report, do NOT append to reviews.log.** Print `STATUS: partial reason=<gate> <error>` and halt the entire review. The user will re-run with a fixed environment. Gate failures are not recoverable by improvisation — the whole point of the gates is to make output drift loud.
 
-- **Markdown report:** `ctx_execute_file` path: "examples/sample-report.md" intent: "codelens:report-template". Follow that structure exactly.
-- **reviews.json entry:** `ctx_execute_file` path: "schema/reviews-entry.schema.json" intent: "codelens:schema-reviews". Emit one object conforming to the JSON Schema.
-- **Abstraction rules + translation maps:** `ctx_execute_file` path: "schema/INTERNAL.md" intent: "codelens:schema-internal". Apply ALL abstraction rules (no tool/plugin names, no money, semantic rule names, generic command form). Use the translation maps to convert raw tool output to schema keys.
+**Phase 4 is a strict sequence. Execute steps 1–7 in order. Do NOT skip steps. Do NOT write any file until step 1 completes AND prints `STATUS: gates-loaded`.**
 
-**Markdown report structure:** title (`# Codebase Analysis Report: [project-name]`), section order (Executive Summary → Critical → High → Medium → Low → Informational → What's Done Well → Priority Actions → Methodology → optional Language Support Note), severity-header format (`## Critical ([count])`). Include Language Support Note ONLY when languageScope=non-JS/TS.
+### Step 1 — Load all output contracts (Gate G1 — REQUIRED FIRST ACTION)
 
-**Cross-domain dedup:** If same file:line (±2 lines) appears in multiple domains, merge into single row in the markdown report. In `reviews.json`, count once under the most severe domain.
+Issue these THREE `ctx_execute` calls verbatim, one per template. Do not paraphrase. Do not merge into a batch. Do not skip any. The sandbox sets `CLAUDE_PROJECT_DIR` to the codelens plugin root, so these resolve the plugin's own templates — not the target repo's.
 
-**Append to .codelens/reviews.json:** Create with `[]` if missing. Read current, append entry, write back. The appended entry MUST validate against `schema/reviews-entry.schema.json`. If any field can't be populated (e.g., tool missing), set its value to `0` / `"unknown"` / empty array per the schema's allowance — never invent data.
+Call 1 — report template:
+```json
+{ "language": "javascript", "code": "const fs=require('fs');const t=fs.readFileSync(process.env.CLAUDE_PROJECT_DIR+'/templates/report.md','utf8');console.log('LOADED report.md bytes='+t.length);" }
+```
+
+Call 2 — entry schema:
+```json
+{ "language": "javascript", "code": "const fs=require('fs');const s=JSON.parse(fs.readFileSync(process.env.CLAUDE_PROJECT_DIR+'/templates/reviews-entry.json','utf8'));console.log('LOADED reviews-entry.json required='+JSON.stringify(s.required||[]));" }
+```
+
+Call 3 — abstraction rules:
+```json
+{ "language": "javascript", "code": "const fs=require('fs');const r=fs.readFileSync(process.env.CLAUDE_PROJECT_DIR+'/templates/README.md','utf8');console.log('LOADED README.md bytes='+r.length);" }
+```
+
+Each call must print its `LOADED ...` line. **After all three return**, you MUST print this exact line on its own:
+
+```
+STATUS: gates-loaded
+```
+
+Do not print `STATUS: gates-loaded` until you have seen all three `LOADED` lines. If any call errors or returns empty, print `STATUS: partial reason=G1 <which call failed>` and halt — do NOT proceed to Step 2.
+
+The report template defines the EXACT report structure (fully-worked example embedded). The entry schema's `required` array (which Call 2 prints) is the authoritative list of allowed fields — `additionalProperties: false`. The README defines abstraction rules and translation maps.
+
+### Step 2 — Build the markdown report
+
+Follow `templates/report.md` exactly. Critical structural rules:
+
+- Title: `# Codebase Analysis Report: <project-name>`
+- Header block: `**Date:**`, `**Stack:**`, `**Scope:** (<N> files scanned)`, `**Reviewer:** codelens v<version>`
+- First section after `---` is `## Scorecard` — a two-column table with `Severity | Count` on the left and `Domain | Count` on the right. NOT letter grades. NOT `Domain | Score | Notes`. The exact shape is in the template.
+- Severity sections in order: Critical → High → Medium → Low → Informational. Emit only those with findings > 0. Header format: `## <Severity> (<count>)`.
+- `## What's Done Well` — one `### <Domain>` subsection per requested domain.
+- `## Priority Actions` — four subsections: Immediate (Week 1), Short-Term (Week 2-3), Medium-Term (Month 1), Backlog.
+- `## Methodology` — one paragraph + per-domain table.
+
+Cross-domain dedup: if same file:line (±2 lines) appears in multiple domains, merge into single row. The severity counts (`crit`/`high`/`med`/`low`/`info`) in the reviews.log entry reflect post-dedup totals.
+
+### Step 3 — Write the markdown report
+
+Use the native `Write` tool to write the report to `config.outputFile` at the target repo's root.
+
+### Step 4 — Run the report structure validator (Gate G2 — REQUIRED before append)
+
+Issue this `ctx_execute` call verbatim. Substitute `<config.outputFile>` with the actual report path written in Step 3.
+
+```json
+{ "language": "shell", "code": "bash \"$CLAUDE_PROJECT_DIR/scripts/validate-report.sh\" \"<config.outputFile>\"" }
+```
+
+The script prints exactly one line: `OK` (exit 0) or `FAIL: <reason>` (exit 1).
+
+- If the line is `OK` → print `STATUS: report-ok` and proceed to Step 5.
+- If the line starts with `FAIL:` → fix the report (Step 2/3), re-Write, re-issue THIS Step 4 call. Do not print `STATUS: report-ok` until you see a literal `OK` line.
+
+You MUST NOT proceed to Step 5 unless you have printed `STATUS: report-ok`.
+
+### Step 5 — Build the reviews.log entry
+
+Emit one JSON object with exactly these 11 fields (no others). Short keys keep each entry on a single line.
+
+```json
+{"ts":"<ISO 8601 UTC>","scope":"full | path:<target> | diff:<target>","crit":<int>,"high":<int>,"med":<int>,"low":<int>,"info":<int>,"report":"<relative path to report>","v":"<X.Y.Z>","tokIn":<int>,"tokOut":<int>}
+```
+
+Field meanings:
+- `ts` — ISO 8601 UTC timestamp
+- `scope` — `full`, `path:<target>`, or `diff:<target>`
+- `crit`/`high`/`med`/`low`/`info` — post-dedup severity counts (non-negative ints)
+- `report` — relative path to the markdown report
+- `v` — agent's semver (e.g., `0.0.8`)
+- `tokIn` — input/prompt tokens used by this review (get from `ctx_stats` or transcript bytes ÷ 4)
+- `tokOut` — output/completion tokens used by this review
+
+### Step 6 — Run the entry shape validator (Gate G3 — REQUIRED before append)
+
+Use `ctx_execute` with `language: "javascript"` and this exact template — fill in the `<...>` placeholders from the Step 5 entry, then issue the call:
+
+```json
+{ "language": "javascript", "code": "const { validateEntry } = require(process.env.CLAUDE_PROJECT_DIR + '/scripts/validate-entry.js'); const candidate = {\"ts\":\"<ISO8601 UTC>\",\"scope\":\"<full|path:X|diff:X>\",\"crit\":<int>,\"high\":<int>,\"med\":<int>,\"low\":<int>,\"info\":<int>,\"report\":\"<rel path>\",\"v\":\"<X.Y.Z>\",\"tokIn\":<int>,\"tokOut\":<int>}; const out = validateEntry(candidate); console.log(out); if (out !== 'OK') { process.exit(1); }" }
+```
+
+This loads the validator source via `require()` (the sandbox sets `CLAUDE_PROJECT_DIR` to the repo root, and Node handles the validator's shebang line), runs `validateEntry()` against your candidate object, and prints `OK` or `FAIL: <reason>`.
+
+- If the line is `OK` → print `STATUS: entry-ok` and proceed to Step 7.
+- If the line starts with `FAIL:` → fix the entry per the message, re-issue THIS Step 6 call.
+
+You MUST NOT proceed to Step 7 unless you have printed `STATUS: entry-ok`. If the candidate uses any field name not in `{ts, scope, crit, high, med, low, info, report, v, tokIn, tokOut}`, this gate will FAIL with `unexpected field <name>` (the validator enforces `additionalProperties: false`).
+
+### Step 7 — Append to .codelens/reviews.log (ONLY after G1+G2+G3 markers printed)
+
+Precondition: your transcript so far in Phase 4 contains all three lines:
+- `STATUS: gates-loaded` (Step 1)
+- `STATUS: report-ok`    (Step 4)
+- `STATUS: entry-ok`     (Step 6)
+
+If any is missing, **STOP. Do not append.** Print `STATUS: partial reason=missing-marker:<which>`.
+
+If all three are present: create `.codelens/reviews.log` with `[]` if missing. Read current contents, append the validated entry, write back via native `Write`. Then print `STATUS: complete` as the final line.
+
+### Terminal guard (after step 7)
+
+The review is complete. Do NOT re-enter Phase 0. Do NOT re-run any tool calls. Do NOT rewrite the report. If the user wants another review, they will issue a new `/codelens:review` invocation.
+
+### On any failure (steps 1, 4, 6)
+
+If a step fails and you cannot fix it: print `STATUS: partial` with the failure reason. Do NOT append to `.codelens/reviews.log`. The report may already be on disk (step 3 ran before step 4) — that's acceptable; the entry-not-appended state signals to the user that the review needs re-running.
 
 </workflow>
 
@@ -317,7 +434,7 @@ After results return, re-verify evidence from Phase 2 batched outputs (biome, ts
 - **Never use Glob** when rg can do the job faster.
 - **Always use ctx_batch_execute for Phase 1+2** — one LLM turn. rg runs inside the batch.
 - **Always use ctx_batch_execute for Fallow subcommands** — second turn, concurrency=3.
-- **Always use native Write tool** for final report and reviews.json append.
+- **Always use native Write tool** for final report and reviews.log append.
 - **Always include file paths and line numbers** in every finding.
 - **Always organize findings by severity FIRST** (Critical > High > Medium > Low > Informational), NOT by domain.
 - **Always include cross-domain summary tables** at each severity level.
@@ -328,5 +445,6 @@ After results return, re-verify evidence from Phase 2 batched outputs (biome, ts
 - **Discard low-confidence findings.** Only report evidence-backed issues.
 - **Keep the report actionable** — every finding must have a remediation path.
 - **Prefer ctx_execute_file over Read** for source files (keeps raw bytes out of context).
-- **Always consult `schema/INTERNAL.md` + `schema/reviews-entry.schema.json` before writing any structured output.** Apply abstraction rules (no tool/plugin names, no money, semantic rule names, generic command form).
+- **Phase 4 gates are mandatory.** The preflight table at the top of Phase 4 lists the three required markers (`gates-loaded`, `report-ok`, `entry-ok`). Do not write structured output without printing them.
+- **Apply abstraction rules** (no tool/plugin names, no money, semantic rule names, generic command form) to all findings — defined in `templates/README.md`, loaded at Step 1.
 </constraints>

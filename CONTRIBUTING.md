@@ -74,7 +74,7 @@ After discussion, the domain is implemented as:
 1. New `<yourdomain-criteria>` block in `agents/codelens-reviewer.md`
 2. Pattern command added to Phase 2's rg block (conditionally included when the domain is requested)
 3. Domain checks added to Phase 3's processing code template
-4. Optionally add a preset to `.claude/review-presets.json`
+4. Optionally add a preset to `config/presets.json`
 
 Users then invoke the new domain via `/codelens:review <yourdomain>` — no new skill file needed.
 
@@ -160,7 +160,7 @@ Regardless of method, after `/codelens:review` completes check:
 - Is the severity correct?
 - Is the evidence accurate (file path, line number, code snippet)?
 - Does the fix suggestion make sense?
-- For the reviews log: did `.codelens/reviews.json` get one entry appended with the expected 6 fields (`timestamp`, `command`, `scope`, `summary`, `status`, `reportPath`)?
+- For the reviews log: did `.codelens/reviews.json` get one entry appended with the expected 6 fields (`timestamp`, `scope`, `summary`, `findings`, `reportPath`, `reviewerVersion`)?
 
 ### Edge Cases to Test
 
@@ -193,11 +193,12 @@ If codelens misses something it should catch:
 
 ## Background Reading
 
-The `references/` directory (gitignored, not shipped with the plugin) contains the original agents and execution plan that codelens was built from. Useful for understanding the design decisions:
+The `archive/` directory contains the original agents and design docs that codelens was built from. Useful for understanding the design decisions:
 
-- `references/full-codebase-reviewer.md` — the monolithic agent that was decomposed into the pipeline
-- `references/security-auditor.md`, `architect-reviewer.md`, `code-reviewer.md`, `accessibility-reviewer.md` — the original 4 separate agents
-- `references/EXECUTION_PLAN.md` — the detailed design document for the 3-phase pipeline
+- `archive/agents/full-codebase-reviewer.md` — the monolithic agent that was decomposed into the pipeline
+- `archive/agents/security-auditor.md`, `architect-reviewer.md`, `code-reviewer.md`, `accessibility-reviewer.md` — the original 4 separate agents
+- `archive/reports/codelens-reviewer-refactor-spec-v3-addendum.md` — prior-version multi-stack refactor design (deferred)
+- `archive/reports/codelens-reviewer-tool-validation.md` — prior-version tool-validation work
 
 ## File Structure Reference
 
@@ -210,14 +211,24 @@ agents/
 skills/
   review/SKILL.md              # /codelens:review — single NL-driven entry point (all domains + scopes)
   doctor/SKILL.md              # /codelens:doctor (setup diagnostics)
-.claude/
-  review-presets.json          # Default presets (pr-check, a11y-audit, full-audit)
-  codelens-exclusions.json     # Exclusion patterns (defaults + byDomain + keepInScope)
+config/
+  presets.json                 # Default presets (pr-check, a11y-audit, full-audit)
+  exclusions.json              # Exclusion patterns (defaults + byDomain + keepInScope)
+templates/                       # Output contracts (agent-loaded at Phase 4)
+  report.md                    # Markdown report template (placeholder skeleton)
+  reviews-entry.json           # Minimal 6-field entry shape for .codelens/reviews.json
+  README.md                    # Abstraction rules + translation maps
 .claude-plugin/
   plugin.json                  # Plugin manifest
   marketplace.json             # Marketplace listing
-examples/
-  sample-report.md             # Anonymized real report
+references/                       # Local-only design references (gitignored)
+  codebase-analyzer.md             # Structural pattern the agent body follows
+scripts/
+  bench-phase.sh               # Benchmark harness
+  bench-mcp-settings.json      # MCP allowlist for headless bench runs
+archive/                       # Prior-version artifacts (shipped for reference)
+  agents/                      # Superseded agent bodies from v1.x
+  reports/                     # Prior-version design docs
 docs/
   smoke-tests/                 # End-to-end test runs (reference for refactoring)
 CLAUDE.md                  # Project instructions for Claude Code

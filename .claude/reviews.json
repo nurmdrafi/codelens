@@ -1,1 +1,0 @@
-{"reviews":[{"timestamp":"2026-06-17T16:12:00Z","version":"0.0.5","domains":["quality"],"scope":"path","scopeTarget":"/Users/nur/Barikoi/codelens","outputFile":"SMOKE_TEST_REPORT.md","findings":{"total":11,"bySeverity":{"critical":0,"high":2,"medium":2,"low":3,"informational":4}},"agent":{"name":"codelens-reviewer","version":"0.0.5","phases":4,"tokenEstimate":8500}}]}

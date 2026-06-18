@@ -58,12 +58,12 @@ else
   exit 64
 fi
 
-echo "[bench] running: (cd $TARGET && claude -p --plugin-dir $PLUGIN_DIR --settings $PLUGIN_DIR/scripts/bench-settings.json --permission-mode bypassPermissions --output-format stream-json --verbose) with prompt: $PROMPT"
+echo "[bench] running: (cd $TARGET && claude -p --plugin-dir $PLUGIN_DIR --settings $PLUGIN_DIR/scripts/bench-mcp-settings.json --permission-mode bypassPermissions --output-format stream-json --verbose) with prompt: $PROMPT"
 START=$(date +%s%N)
 set +e
 ( cd "$TARGET" && echo "$PROMPT" | claude -p \
     --plugin-dir "$PLUGIN_DIR" \
-    --settings "$PLUGIN_DIR/scripts/bench-settings.json" \
+    --settings "$PLUGIN_DIR/scripts/bench-mcp-settings.json" \
     --permission-mode bypassPermissions \
     --output-format stream-json \
     --verbose ) > "$TRANSCRIPT" 2>&1

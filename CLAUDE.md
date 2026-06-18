@@ -25,7 +25,7 @@ Markdown only — skills, agents, configs. No build step, no runtime dependencie
       Phase 4: Compile (Write report + append to .codelens/reviews.json)
 ```
 
-The agent is **stateless**: no persisted intermediate JSON, no checkpoints, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body (matching `references/codebase-analyzer.md`).
+The agent is **stateless**: no persisted intermediate JSON, no checkpoints, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body.
 
 **v0.0.5 optimization:** Phase 1 + Phase 2 merged into a single `ctx_batch_execute` call (1 LLM turn vs ~8 in v0.0.4). Phase 0 reduced to one `ctx_stats` call. Token budget: ~8.5K per review vs ~14K in v0.0.4 (~40% reduction).
 
@@ -56,12 +56,25 @@ skills/
   doctor/SKILL.md          # /codelens:doctor (setup diagnostics)
 agents/
   codelens-reviewer.md     # The single agent
+config/
+  exclusions.json          # Exclusion patterns applied by agent
+  presets.json             # Presets (pr-check, a11y-audit, full-audit)
+templates/                   # Output contracts (agent-loaded at Phase 4)
+  report.md                  # Markdown report template (placeholder skeleton)
+  reviews-entry.json         # Minimal 6-field entry shape for .codelens/reviews.json
+  README.md                  # Abstraction rules + translation maps (applies to both contracts)
+references/                  # Local-only design references (gitignored — not shipped)
+  codebase-analyzer.md         # Structural pattern the agent body follows
 .claude/
-  codelens-exclusions.json # Exclusion patterns applied by agent
-  review-presets.json      # Presets (pr-check, a11y-audit, full-audit)
-examples/
-  sample-report.md
-references/                # Source-of-truth docs (gitignored)
+  settings.local.json      # User-local Claude Code settings (MCP allowlist)
+.codelens/                 # Runtime state (gitignored)
+  reviews.json             # Append-only review log
+scripts/
+  bench-phase.sh           # Benchmark harness for prompt-cost measurement
+  bench-mcp-settings.json  # MCP allowlist for headless bench runs
+archive/                   # Prior-version artifacts (shipped for decision-history reference)
+  agents/                  # Superseded agent bodies from v1.x
+  reports/                 # Prior-version design docs
 ```
 
 ## Conventions
@@ -107,8 +120,8 @@ The `codelens-reviewer` agent obeys these structural rules (encoded as `<constra
 - **Severity-first ordering** — Critical > High > Medium > Low > Informational.
 - **Evidence-backed** — every finding has file path, line number, snippet.
 - **Cross-domain dedup** — same `file:line` (±2 lines) across domains merges into one row.
-- **Exclusions honored** — read `.claude/codelens-exclusions.json` in Phase 2's first sub-step.
-- **Append-only log** — every review appends one entry to `.codelens/reviews.json` (6 fields).
+- **Exclusions honored** — read `config/exclusions.json` in Phase 2's first sub-step.
+- **Append-only log** — every review appends one entry to `.codelens/reviews.json` (6 fields: `timestamp`, `scope`, `summary`, `findings`, `reportPath`, `reviewerVersion`).
 
 ## Common Workflows
 
@@ -121,7 +134,7 @@ The `codelens-reviewer` agent obeys these structural rules (encoded as `<constra
 
 ### Modify the report format
 
-Edit the report template inline in `agents/codelens-reviewer.md` Phase 4. There is no separate `report-template.md` file (folded in v0.0.1).
+Edit `templates/report.md` (the template — includes a fully-worked example at the bottom for pattern-matching).
 
 ### Release a new version
 

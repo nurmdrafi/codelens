@@ -1,9 +1,9 @@
-# Reference docs (not shipped with plugin) — but report-template.md MUST ship
+# Reference docs — local-only design references, not shipped with plugin
 references/*
-!references/report-template.md
 
 # codelens review history (per-user, not plugin source)
 .codelens/reviews.json
+.codelens/reviews.log
 .codelens/scan.log
 
 # Hook runtime logs (per-session, not source)

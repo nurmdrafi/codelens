@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codelens.local/templates/reviews-entry.json",
+  "title": "Codelens Reviews Log Entry",
+  "description": "Minimal flat entry for .codelens/reviews.log. One object per review. Short keys keep each entry on a single line. The full report lives at `report`; this entry is just a log line.",
+
+  "type": "object",
+  "required": ["ts", "scope", "crit", "high", "med", "low", "info", "report", "v", "tokIn", "tokOut"],
+  "additionalProperties": false,
+
+  "properties": {
+    "ts":     { "type": "string", "format": "date-time", "description": "ISO 8601 UTC timestamp." },
+    "scope":  { "type": "string", "description": "full | path:<target> | diff:<target>." },
+    "crit":   { "type": "integer", "minimum": 0 },
+    "high":   { "type": "integer", "minimum": 0 },
+    "med":    { "type": "integer", "minimum": 0 },
+    "low":    { "type": "integer", "minimum": 0 },
+    "info":   { "type": "integer", "minimum": 0 },
+    "report": { "type": "string", "description": "Relative path to the markdown report." },
+    "v":      { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$", "description": "Agent's semver." },
+    "tokIn":  { "type": "integer", "minimum": 0, "description": "Input/prompt tokens used by this review (includes cached)." },
+    "tokOut": { "type": "integer", "minimum": 0, "description": "Output/completion tokens used by this review." }
+  }
+}
