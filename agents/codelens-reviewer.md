@@ -132,9 +132,11 @@ WCAG 2.1 AA:
 <workflow>
 
 ## Phase 0: Preflight
+
 ```javascript
 ctx_stats()
 ```
+
 If fails: halt with install hint. If errors during Phase 1-2: rg missing → brew install ripgrep; context-mode MCP → /plugin marketplace add mksglu/context-mode; Context7 MCP → /plugin marketplace add upstash/context7.
 
 ## Phase 1+2: Inventory + Patterns (ONE ctx_batch_execute)
@@ -144,26 +146,60 @@ If fails: halt with install hint. If errors during Phase 1-2: rg missing → bre
 **Exclusions:** Read .claude/codelens-exclusions.json, build EXCL flags. Fallback: -g '!node_modules' -g '!dist' -g '!.next' -g '!*.min.js' -g '!*.min.css' -g '!*.map' -g '!package-lock.json' -g '!yarn.lock' -g '!pnpm-lock.yaml'
 
 **Single call, concurrency=8:**
+
 ```javascript
 ctx_batch_execute({
   commands: [
     {label: "p1-files", command: "rg --files <scopePath> 2>/dev/null | wc -l"},
-    {label: "p1-top-files", command: "find <scopePath> -type f \\( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' -o -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.java' \\) -exec wc -l {} + 2>/dev/null | sort -rn | head -15"},
     {label: "p1-stack", command: "cat package.json 2>/dev/null; cat Cargo.toml 2>/dev/null; cat go.mod 2>/dev/null; cat pyproject.toml 2>/dev/null; cat requirements.txt 2>/dev/null"},
+    // RISK SIGNALS for weighted hotspot selection (P2). r1-loc is the single LOC source.
+    {label: "r1-loc",            command: "find <scopePath> -type f \\( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' \\) -exec wc -l {} + 2>/dev/null | rg -v ' total$'"},
+    {label: "r2-finding-density",command: "rg --count -e 'eval\\(|innerHTML|catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}|console\\.log|TODO|FIXME' <scopePath> <EXCL> 2>/dev/null"},
+    {label: "r3-complexity",     command: "biome lint <scopePath> --reporter=json 2>/dev/null | rg -o '\"path\":\"[^\"]+\"' | sort | uniq -c | sort -rn | head -20 || echo 'biome-not-available'"},
+    {label: "r4-centrality",     command: "rg --count '^import .* from' <scopePath> <EXCL> 2>/dev/null | sort -rn | head -20"},
     {label: "p2-sec-patterns", command: "rg --no-heading -n -e 'localStorage\\.(getItem|setItem)' -e 'dangerouslySetInnerHTML' -e 'eval\\(' -e 'innerHTML|outerHTML' -e 'Authorization.*Bearer' <scopePath> <EXCL> 2>/dev/null"},
     {label: "p2-sec-secrets", command: "rg -i --no-heading -n -e 'SECRET' -e 'PASSWORD' -e 'API_KEY' -e 'TOKEN' <scopePath> <EXCL> 2>/dev/null | rg -v 'process\\.env|\\.env|config' || true"},
     {label: "p2-quality", command: "rg --count -e 'console\\.log' -e 'TODO|FIXME|HACK|XXX' -e 'eslint-disable' -e 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}' <scopePath> <EXCL> 2>/dev/null"},
     {label: "p2-a11y", command: "rg --no-heading -n '<img' <scopePath> <EXCL> 2>/dev/null | rg -v 'alt='; rg --no-heading -n '<button' <scopePath> <EXCL> 2>/dev/null | rg -v 'aria-label'"},
-    {label: "p2-biome", command: "biome lint <scopePath> --reporter=summary --quiet 2>/dev/null | tail -5 || echo 'biome-not-available'"}
+    {label: "p2-biome", command: "biome lint <scopePath> --reporter=summary 2>/dev/null | tail -10 || echo 'biome-not-available'"},
+    {label: "p2-tsc", command: "sh -c '( test -x ./node_modules/.bin/tsc && ./node_modules/.bin/tsc -p . --noEmit --skipLibCheck --pretty false || npx --yes --package=typescript tsc -p . --noEmit --skipLibCheck --pretty false )' 2>/dev/null | head -c 4000 || echo 'tsc-not-available'"}
   ],
   concurrency: 8,
-  queries: ["file count", "top files hotspots", "tech stack dependencies", "security findings", "quality issues", "a11y violations", "biome summary"]
+  queries: ["file count", "tech stack dependencies", "security findings", "quality issues", "a11y violations", "biome summary", "TS2 type errors", "TS6133 unused", "TS2531 null deref", "TS2304 cannot find name", "TS2307 cannot find module", "loc per file r1", "finding density r2", "complexity hotspots r3", "import centrality r4"]
 })
 ```
+
+**Weighted hotspot selection (P2):** After the batch returns, compute per-file risk score from `r1-loc`, `r2-finding-density`, `r3-complexity`, `r4-centrality`. Use ONE `ctx_execute` call. Parsing rules per signal (output formats are deterministic):
+
+- `r1-loc`: `wc -l` format = `<N> <path>` per line (filtered to drop the `total` summary). Parse with `line.match(/^(\d+)\s+(.+)$/)` → `loc[path] = N`.
+- `r2-finding-density`: `rg --count` format = `<path>:<count>`. Parse `line.match(/^(.+?):(\d+)$/)` → `density[path] = count`.
+- `r3-complexity`: biome JSON `diagnostics[].location.path` is a plain string field `"path":"<file>"` (verified against biome v2.2.x — schema is experimental but this field is stable). Piped through `rg -o '"path":"[^"]+"' | sort | uniq -c` produces `<N> "path":"<file>"`. Parse `line.match(/^\s*(\d+)\s+"path":"(.+?)"$/)` → `complexity[path] = N`. If output is `biome-not-available`, treat all files as complexity=0. Note: biome's JSON schema is marked experimental; this signal degrades gracefully — zero-weighted on parse failure.
+- `r4-centrality`: same format as r2. `centrality[path] = count`.
+
+Post-processor:
+
+```javascript
+// Build per-file signal maps using the parse rules above.
+// Normalize each signal to 0..1 by dividing by the max value across files.
+// riskScore[file] = 0.2*locNorm + 0.4*densityNorm + 0.2*complexityNorm + 0.2*centralityNorm
+// If a signal is unavailable (e.g., r3 returned 'biome-not-available'), drop its weight
+// and renormalize the remaining weights to sum to 1.0.
+const weights = {loc: 0.2, density: 0.4, complexity: 0.2, centrality: 0.2};
+// (drop zeroed signals and renormalize)
+const ranked = Object.keys(allFiles).map(f => ({
+  file: f,
+  score: weightedSum(f),
+  factors: {loc: loc[f]||0, density: density[f]||0, complexity: complexity[f]||0, centrality: centrality[f]||0}
+})).sort((a,b) => b.score - a.score).slice(0, 15);
+console.log(JSON.stringify(ranked));
+```
+
+This ranked list is the input to Phase 3.
 
 **Language detection:** js_ts_files = *.js|*.jsx|*.ts|*.tsx count; other_files = *.py|*.go|*.rs|*.java|*.php|*.rb|*.cs|*.c|*.cpp count. If js_ts_files==0 AND other_files>0: languageScope=non-JS/TS (drop Biome/Fallow, Phase 4 adds Language Support Note). Else: languageScope=JS/TS.
 
 **Fallow (if JS/TS):**
+
 ```javascript
 ctx_batch_execute({
   commands: [
@@ -176,7 +212,7 @@ ctx_batch_execute({
 })
 ```
 
-**Mapping:** Biome lint/a11y/* → a11y High; lint/suspicious/*, lint/correctness/* → Quality; lint/complexity/* → Quality Medium; lint/style/* → Quality Low. Fallow dead-code → Quality Medium; dupes → Quality Medium; circular_dep_count>0 → Architecture High; hotspot_count>0 → Architecture Medium; maintainability_low_pct>20 → Architecture Medium.
+**Mapping:** Biome lint/a11y/* → a11y High; lint/suspicious/*, lint/correctness/* → Quality; lint/complexity/* → Quality Medium; lint/style/* → Quality Low. Fallow dead-code → Quality Medium; dupes → Quality Medium; circular_dep_count>0 → Architecture High; hotspot_count>0 → Architecture Medium; maintainability_low_pct>20 → Architecture Medium. **tsc mapping:** `TS2xxx` (type errors) → Quality High; `TS2531/2532` (null deref / null safety) → Quality High; `TS6133` (unused locals/imports/params) → Quality Medium; `TS2304/2307` (cannot find name/module) → Quality Medium. Cross-reference each tsc finding's file:line via `ctx_search(queries:["<TS-code> <filename>"])` to attach evidence.
 
 **If both missing:** Note in report: Dead-code and duplication analysis skipped — fallow not installed. Lint+a11y via rg fallback — Biome not installed.
 
@@ -191,99 +227,106 @@ For each flagged library:
 
 Augment Phase 2 findings with doc-verified evidence. If no flags: SKIP entirely.
 
-## Phase 3: Hotspot Deep-Dive (ctx_execute_file, single-pass)
+## Phase 3: Hotspot Deep-Dive (tool-driven, single batched call)
 
-Top 10–15 files from Phase 1 (hard cap: 15). Call ctx_execute_file once per file. Analyze ALL domains simultaneously. Intent: "codelens:file:<path>".
+Top 10–15 files by **riskScore** from Phase 1 (hard cap: 15). ALL hotspots are processed in ONE `ctx_batch_execute` call — accumulate per-file pattern commands into a single batch, run once, reason across all results. NO regex matching in the prompt; model's job is to read indexed tool output and assign severity.
+
+**v0.0.7 optimization:** Previous versions called `ctx_batch_execute` once per hotspot (15 LLM turns). Benchmark on pickaboo-frontend (15 hotspots × 5 patterns = 75 commands): sequential 570ms / 15 turns → single batch 232ms / 1 turn (2.46× wall-clock, ~93% LLM-turn reduction, zero finding loss).
+
+**Build the commands array dynamically** — outer loop over hotspot files, inner conditionals per `config.domains`. Each command's `command` field is a pure shell string; no JS evaluation inside it. Pseudocode:
 
 ```javascript
-const CHECKS = config.domains;
-const lines = FILE_CONTENT.split('\n');
-const result = {file: FILE_CONTENT_PATH, lineCount: lines.length, findings: []};
+const HOTSPOTS = ["<file1>", "<file2>", ..., "<file15>"];  // top 15 by riskScore
+const cmds = [];
 
-lines.forEach((line, i) => {
-  const ln = i + 1;
-  const t = line.trim();
-
-  if (CHECKS.includes('security')) {
-    if (line.match(/eval\(|innerHTML|dangerouslySetInnerHTML/))
-      result.findings.push({domain: 'security', line: ln, text: t, signal: 'xss-or-eval'});
-    if (line.match(/localStorage\.(getItem|setItem)/))
-      result.findings.push({domain: 'security', line: ln, text: t, signal: 'localstorage-secret'});
-    if (line.match(/password|secret|api[_-]?key/i) && !line.match(/process\.env|\.env/))
-      result.findings.push({domain: 'security', line: ln, text: t, signal: 'hardcoded-secret'});
+for (const FILE of HOTSPOTS) {
+  // SECURITY
+  if (config.domains.includes('security')) {
+    cmds.push({label: "ag-xss-innerhtml-" + cmds.length, command: "(sg run -p '$$.innerHTML' -l tsx,jsx,ts,js \"" + FILE + "\" 2>/dev/null || rg -n -e 'innerHTML' -e 'dangerouslySetInnerHTML' \"" + FILE + "\" 2>/dev/null) || echo none"});
+    cmds.push({label: "ag-xss-eval-" + cmds.length,       command: "(sg run -p 'eval($$$ARGS)' -l ts,js \"" + FILE + "\" 2>/dev/null || rg -n 'eval\\(' \"" + FILE + "\" 2>/dev/null) || echo none"});
   }
-
-  if (CHECKS.includes('architecture')) {
-    if (line.match(/import\s+.*from\s+['"]([^'"]+)['"]/))
-      result.findings.push({domain: 'architecture', line: ln, text: t, signal: 'import'});
-    if (line.match(/export\s+(default\s+)?/))
-      result.findings.push({domain: 'architecture', line: ln, text: t, signal: 'export'});
+  // ARCHITECTURE — imports/exports sourced from fallow (Phase 2). No regex here.
+  // QUALITY
+  if (config.domains.includes('quality')) {
+    cmds.push({label: "ag-empty-catch-" + cmds.length,    command: "(sg run -p 'catch($E) {}' -l ts,js \"" + FILE + "\" 2>/dev/null || rg -n 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}' \"" + FILE + "\" 2>/dev/null) || echo none"});
   }
-
-  if (CHECKS.includes('quality')) {
-    if (line.match(/function\s+\w+|(?:const|let|var)\s+\w+\s*=\s*(?:\([^)]*\)|[^=])\s*=>/))
-      result.findings.push({domain: 'quality', line: ln, text: t, signal: 'function'});
-    if (line.match(/catch\s*\([^)]*\)\s*\{\s*\}/))
-      result.findings.push({domain: 'quality', line: ln, text: t, signal: 'empty-catch'});
-    if (line.match(/console\.log/))
-      result.findings.push({domain: 'quality', line: ln, text: t, signal: 'console-log'});
+  // console.log, hardcoded-secret, localstorage: sourced from Phase 2 rg batch — re-verify via ctx_search.
+  // A11Y — JSX self-closing tags use `/>`. Note: ast-grep-first chains must use `command -v sg` check,
+  // NOT `|| rg fallback`, because the pipeline `sg ... | rg -v ... | head` succeeds with empty output
+  // when sg is missing — so the || branch never fires. Use `command -v sg` to explicitly route.
+  if (config.domains.includes('a11y')) {
+    cmds.push({label: "ag-btn-no-aria-" + cmds.length,    command: "command -v sg >/dev/null 2>&1 && (sg run -p '<button $$ATTRS>$$$CHILDREN</button>' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (rg -n '<button' \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || echo none"});
+    cmds.push({label: "ag-img-no-alt-" + cmds.length,     command: "command -v sg >/dev/null 2>&1 && (sg run -p '<img $$$ATTRS />' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (rg -n '<img' \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || echo none"});
+    cmds.push({label: "ag-input-no-label-" + cmds.length, command: "(rg -n -e '<input' -e '<textarea' -e '<select' \"" + FILE + "\" 2>/dev/null | rg -v -e 'aria-label' -e '<label') || echo none"});
   }
+}
 
-  if (CHECKS.includes('a11y')) {
-    if (line.match(/<button/) && !line.match(/aria-label/))
-      result.findings.push({domain: 'a11y', line: ln, text: t, signal: 'button-missing-aria'});
-    if (line.match(/<input|<textarea|<select/) && !line.match(/aria-label|<label/))
-      result.findings.push({domain: 'a11y', line: ln, text: t, signal: 'input-missing-label'});
-    if (line.match(/<img/) && !line.match(/alt=/))
-      result.findings.push({domain: 'a11y', line: ln, text: t, signal: 'img-missing-alt'});
-  }
-});
-
-console.log(JSON.stringify(result));
+// Guard: if cmds.length > 100, split into 2 batches of ~50 (ctx_batch_execute practical limit).
+const BATCH_SIZE = 100;
+if (cmds.length <= BATCH_SIZE) {
+  ctx_batch_execute({
+    commands: cmds,
+    concurrency: 8,
+    queries: [
+      "xss innerHTML findings", "eval usage", "empty catch",
+      "missing aria-label buttons", "missing alt images", "missing input labels",
+      HOTSPOTS[0], HOTSPOTS[1], HOTSPOTS[2]   // top-3 by risk — for per-file evidence retrieval
+    ]
+  });
+} else {
+  // Two sequential batches. Findings from both indexed into the same knowledge base.
+  ctx_batch_execute({commands: cmds.slice(0, BATCH_SIZE), concurrency: 8, queries: [...]});
+  ctx_batch_execute({commands: cmds.slice(BATCH_SIZE), concurrency: 8, queries: [...]});
+}
 ```
 
-Only console.log summary enters context. Raw bytes stay in sandbox. For re-verification: ctx_search(queries: ["<signal-term> <filename>"]). Do NOT re-read files.
+After results return, re-verify evidence from Phase 2 batched outputs (biome, tsc, fallow, p2-sec-*) via `ctx_search(queries: ["<signal> " + FILE])` for any file mentioned in the indexed Phase 3 output. Do NOT re-read files.
+
+**Coverage matrix — old regex → new source:**
+
+| Old pattern | New source |
+|---|---|
+| `eval(`, `innerHTML`, `dangerouslySetInnerHTML` | ast-grep `ag-xss-*` (rg fallback) + biome `noDangerouslySetInnerHtml` |
+| `localStorage.(get\|set)Item` | Phase 2 `p2-sec-patterns` rg |
+| `password\|secret\|api_key` | Phase 2 `p2-sec-secrets` rg |
+| `catch (...) {}` | ast-grep `ag-empty-catch` (rg fallback) + biome `noEmptyBlock` |
+| `console.log` | Phase 2 `p2-quality` rg + biome `noConsoleLog` |
+| `<button>`, `<img>`, `<input>` a11y | ast-grep + biome `useAriaProps` / `useAltText` / `useInputLabel` |
+| `import ... from`, `export` | dropped — Fallow dead-code covers unused exports in Phase 2 |
+| `function` declarations | dropped — biome complexity covers it in Phase 2 |
 
 ## Phase 4: Compile Report
 
-**Template:** ctx_execute_file path: "references/report-template.md" intent: "codelens:report-template". Follow EXACT structure: title (# Codebase Analysis Report: [project-name]), section order (Executive Summary → Critical → High → Medium → Low → Informational → What's Done Well → Priority Actions → Methodology → optional Language Support Note), severity-header format (## Critical ([count])). Include Language Support Note ONLY when languageScope=non-JS/TS.
+**Templates (consult before writing):**
 
-**Cross-domain dedup:** If same file:line (±2 lines) appears in multiple domains, merge into single row listing all relevant domains.
+- **Markdown report:** `ctx_execute_file` path: "examples/sample-report.md" intent: "codelens:report-template". Follow that structure exactly.
+- **reviews.json entry:** `ctx_execute_file` path: "schema/reviews-entry.schema.json" intent: "codelens:schema-reviews". Emit one object conforming to the JSON Schema.
+- **Abstraction rules + translation maps:** `ctx_execute_file` path: "schema/INTERNAL.md" intent: "codelens:schema-internal". Apply ALL abstraction rules (no tool/plugin names, no money, semantic rule names, generic command form). Use the translation maps to convert raw tool output to schema keys.
 
-**Append to .codelens/reviews.json:** Create with [] if missing. Read current, append entry, write back.
+**Markdown report structure:** title (`# Codebase Analysis Report: [project-name]`), section order (Executive Summary → Critical → High → Medium → Low → Informational → What's Done Well → Priority Actions → Methodology → optional Language Support Note), severity-header format (`## Critical ([count])`). Include Language Support Note ONLY when languageScope=non-JS/TS.
 
-**Appended object shape (6 fields exact):**
-```json
-{"timestamp": "2026-06-15T14:30:22Z", "command": "/codelens:review src/auth", "scope": "path:src/auth", "summary": "2 Critical, 5 High. Weak auth boundary in token validator.", "status": "success", "reportPath": "CODEBASE_ANALYSIS_REPORT.md"}
-```
+**Cross-domain dedup:** If same file:line (±2 lines) appears in multiple domains, merge into single row in the markdown report. In `reviews.json`, count once under the most severe domain.
 
-Field rules:
-- timestamp: ISO 8601 UTC
-- command: exact /codelens:* invocation (or "/codelens:review (direct dispatch)")
-- scope: full | path:<scopeTarget> | diff:<scopeTarget>
-- summary: one sentence executive summary with top-severity count
-- status: success | partial | failed
-- reportPath: config.outputFile
-
-Do NOT add extra fields. Schema fixed at 6 fields.
+**Append to .codelens/reviews.json:** Create with `[]` if missing. Read current, append entry, write back. The appended entry MUST validate against `schema/reviews-entry.schema.json`. If any field can't be populated (e.g., tool missing), set its value to `0` / `"unknown"` / empty array per the schema's allowance — never invent data.
 
 </workflow>
 
 <constraints>
-- # CONSTRAINT: Never read same file twice. Track hotspot files analyzed.
-- # CONSTRAINT: Never load raw file contents into context — use ctx_execute_file.
-- # CONSTRAINT: Never use Glob when rg can do job faster.
-- # CONSTRAINT: Always use ctx_batch_execute for Phase 1+2 — one LLM turn. rg runs inside batch.
-- # CONSTRAINT: Always use ctx_batch_execute for Fallow subcommands — second turn concurrency=3.
-- # CONSTRAINT: Always use native Write tool for final report and reviews.json append.
-- # CONSTRAINT: Always include file paths and line numbers in every finding.
-- # CONSTRAINT: Always organize findings by severity FIRST (Critical > High > Medium > Low > Informational), NOT by domain.
-- # CONSTRAINT: Always include cross-domain summary tables at each severity level.
-- # CONSTRAINT: Always include "What's Done Well" section per requested domain.
-- # CONSTRAINT: Always include phased Priority Actions.
-- # CONSTRAINT: Always include Methodology section.
-- # CONSTRAINT: Never analyze or report on domains not in config.domains.
-- # CONSTRAINT: Discard low-confidence findings. Only report evidence-backed issues.
-- # CONSTRAINT: Keep report actionable — every finding must have remediation path.
-- # CONSTRAINT: ctx_execute_file over Read for source files (keeps raw bytes out of context).
+- **Never re-read files.** Track hotspot files analyzed.
+- **Never load raw file contents into context** — use ctx_execute_file.
+- **Never use Glob** when rg can do the job faster.
+- **Always use ctx_batch_execute for Phase 1+2** — one LLM turn. rg runs inside the batch.
+- **Always use ctx_batch_execute for Fallow subcommands** — second turn, concurrency=3.
+- **Always use native Write tool** for final report and reviews.json append.
+- **Always include file paths and line numbers** in every finding.
+- **Always organize findings by severity FIRST** (Critical > High > Medium > Low > Informational), NOT by domain.
+- **Always include cross-domain summary tables** at each severity level.
+- **Always include "What's Done Well"** section per requested domain.
+- **Always include phased Priority Actions.**
+- **Always include a Methodology section.**
+- **Never analyze or report on domains** not in config.domains.
+- **Discard low-confidence findings.** Only report evidence-backed issues.
+- **Keep the report actionable** — every finding must have a remediation path.
+- **Prefer ctx_execute_file over Read** for source files (keeps raw bytes out of context).
+- **Always consult `schema/INTERNAL.md` + `schema/reviews-entry.schema.json` before writing any structured output.** Apply abstraction rules (no tool/plugin names, no money, semantic rule names, generic command form).
 </constraints>

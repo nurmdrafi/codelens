@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7] - 2026-06-18
+
+### Changed
+
+- **Phase 3 single-batch refactor** — replaced 15 sequential `ctx_batch_execute` calls (one per hotspot) with ONE batched call containing all hotspot × pattern commands. Validated on pickaboo-frontend (462 files, 15 hotspots, 90 commands): wall-clock 570ms → 230ms (2.48× faster), LLM turns 15 → 1 (~93% reduction). Findings preserved (31 = 31). Same leverage pattern as v0.0.5 Phase 1+2 win, applied to Phase 3. Adds 100-command batch guard: if cmds.length > 100, split into two sequential batches.
+- **Phase 3 concurrency 4 → 8** — higher parallelism justified by larger command count per batch.
+
+### Fixed
+
+- **ast-grep pipe-logic fallback bug (silent since v0.0.6)** — `ag-btn-no-aria` and `ag-img-no-alt` commands used `sg ... | rg -v ... | head -20 || rg fallback`. When sg is missing, the pipeline `sg ... | rg -v ... | head` **succeeds with empty output** (exit 0), so the `|| rg fallback` branch never fired. Result: 0 a11y findings on button/img patterns in any environment without ast-grep installed. Fixed by routing on `command -v sg >/dev/null 2>&1 && (sg ...) || (rg ...)` — explicit availability check instead of pipe-empty-success short-circuit. Validated: pickaboo-frontend button-without-aria findings went from 0 → 23 after fix.
+
+## [0.0.6] - 2026-06-18
+
+### Fixed (post-release patch — smoke test 2026-06-18)
+
+Three silent bugs surfaced by the v0.0.6 smoke test (`docs/smoke-tests/2026-06-18-codelens-v0.0.6-smoke-test.md`). All produced empty output that the `|| echo '*-not-available'` terminator swallowed, masking real failures as "tool missing".
+
+- **`p2-tsc` wrong package + missing project flag** — `npx --no-install tsc` resolved to npm package `tsc@2.0.4` (an unrelated Haskell lib). Fixed: `sh -c '( test -x ./node_modules/.bin/tsc && ./node_modules/.bin/tsc -p . ... || npx --yes --package=typescript tsc -p . ... )'`. Tries project-local tsc first, falls back to npx with explicit `--package=typescript`. Also added `-p .` so tsc finds the project tsconfig. Same fix applied to doctor check #11. Verified: produces 18 expected TS6133/TS2307/TS2322 errors on smoke fixture.
+- **`r3-complexity` wrong biome JSON field** — grep matched `"file":"..."` but biome v2.2.x emits `"path":"<file>"` (string, not nested object). Fixed command + parse rule in the P2 post-processor. Verified: correctly extracts 13 diagnostics for the fixture file.
+- **`p2-biome` non-existent `--quiet` flag** — biome v2.2.x has no `--quiet` flag (`Error: no such flag`). Dropped the flag. Verified: summary reporter now emits rule-level violations (`noGlobalEval`, `useAltText`, `useButtonType`, etc.).
+
+### Added
+
+- **Doctor overhaul (P0)** — `/codelens:doctor` now runs 13 checks (up from 5): validates every context-mode MCP tool individually (`ctx_stats`, `ctx_execute`, `ctx_execute_file`, `ctx_search` via seed+lookup, `ctx_batch_execute`), every required CLI (`rg`, `git`), and the plugin manifest + agent file. Optional-tool warn-only checks for `biome`, `fallow`, `tsc` (via `npx --no-install`), and `ast-grep`. Critical-halt on 8 core dependencies; warn-only on 5 optional tools. Closes the gap where doctor passed but Phase 3 silently failed because only `ctx_stats` was pinged.
+- **TypeScript semantic analysis (P3)** — `tsc --noEmit --skipLibCheck` integrated into Phase 2 batched commands. Findings mapped: TS2xxx type errors → Quality High; TS2531/2532 null deref → Quality High; TS6133 unused → Quality Medium; TS2304/2307 cannot find name/module → Quality Medium. Output capped at 4KB to control token cost. Falls back to `tsc-not-available` when typescript isn't installed.
+
+### Changed
+
+- **Phase 3 tool-driven findings (P1)** — replaced 9 embedded JS regex patterns (the `lines.forEach` block) with deterministic AST tools. Per hotspot, one `ctx_batch_execute` runs ast-grep patterns (with rg fallback) for xss/eval/empty-catch/a11y signals. The model now reasons about tool output and assigns severity — no pattern matching in prompt text. Coverage: `innerHTML|dangerouslySetInnerHTML` → ast-grep + biome; `catch(){}` → ast-grep + biome; `<button>/<img>/<input>` a11y → ast-grep + biome. Imports/exports and function-declaration regex dropped (Fallow dead-code + biome complexity cover them in Phase 2).
+- **Weighted hotspot selection (P2)** — Phase 1 hotspot ranking replaced pure LOC (`wc -l | sort -rn`) with Risk Score = 0.4×finding_density + 0.2×loc + 0.2×complexity + 0.2×import_centrality. Four new `ctx_batch_execute` commands (`r1-loc`, `r2-finding-density`, `r3-complexity` from biome JSON, `r4-centrality` from import-edge count) feed a single `ctx_execute` post-processor that normalizes and ranks. Top 15 by risk score become Phase 3 hotspots. Catches high-risk small files (high finding density, high inbound imports, high biome complexity) that LOC-only ranking missed. If any signal source is unavailable (e.g., biome missing), that signal is zeroed and remaining re-weighted to 1.0.
+
+### Fixed
+
+- **Version drift** — `plugin.json` and `marketplace.json` were stuck at `0.0.4` while CHANGELOG showed `0.0.5`. All three version fields now synced at `0.0.6`.
+
+---
+
 ## [0.0.5] - 2026-06-17
 
 ### Changed
