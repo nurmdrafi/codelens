@@ -6,6 +6,9 @@ references/*
 .codelens/reviews.json
 .codelens/scan.log
 
+# Hook runtime logs (per-session, not source)
+.claude/hooks/.logs/
+
 # Benchmark raw artifacts (regenerable — only keep summaries)
 docs/superpowers/benchmarks/reports/
 docs/superpowers/benchmarks/transcripts/
