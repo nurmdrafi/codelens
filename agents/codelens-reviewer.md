@@ -409,18 +409,19 @@ You MUST NOT proceed to Step 5 unless you have printed `STATUS: report-ok`.
 
 ### Step 5 — Build the reviews.log entry
 
-Emit one JSON object with exactly these 11 fields (no others). Short keys keep each entry on a single line.
+Emit one JSON object with exactly these 12 fields (no others). Short keys keep each entry on a single line. `schema` is required — current value is `"1"`.
 
 ```json
-{"ts":"<ISO 8601 UTC>","scope":"full | path:<target> | diff:<target>","crit":<int>,"high":<int>,"med":<int>,"low":<int>,"info":<int>,"report":"<relative path to report>","v":"<X.Y.Z>","tokIn":<int>,"tokOut":<int>}
+{"schema":"1","ts":"<ISO 8601 UTC>","scope":"full | path:<target> | diff:<target>","crit":<int>,"high":<int>,"med":<int>,"low":<int>,"info":<int>,"report":"<relative path to report>","v":"<X.Y.Z>","tokIn":<int>,"tokOut":<int>}
 ```
 
 Field meanings:
+- `schema` — entry schema version, currently `"1"`. Bumped when the entry shape changes in a breaking way.
 - `ts` — ISO 8601 UTC timestamp
 - `scope` — `full`, `path:<target>`, or `diff:<target>`
 - `crit`/`high`/`med`/`low`/`info` — post-dedup severity counts (non-negative ints)
 - `report` — relative path to the markdown report
-- `v` — agent's semver (e.g., `0.0.8`)
+- `v` — agent's semver (e.g., `0.0.10`)
 - `tokIn` — input/prompt tokens used by this review (get from `ctx_stats` or transcript bytes ÷ 4)
 - `tokOut` — output/completion tokens used by this review
 
@@ -429,7 +430,7 @@ Field meanings:
 Use `ctx_execute` with `language: "javascript"` and this exact template — fill in the `<...>` placeholders from the Step 5 entry, then issue the call:
 
 ```json
-{ "language": "javascript", "code": "const { validateEntry } = require(process.env.CLAUDE_PROJECT_DIR + '/scripts/validate-entry.js'); const candidate = {\"ts\":\"<ISO8601 UTC>\",\"scope\":\"<full|path:X|diff:X>\",\"crit\":<int>,\"high\":<int>,\"med\":<int>,\"low\":<int>,\"info\":<int>,\"report\":\"<rel path>\",\"v\":\"<X.Y.Z>\",\"tokIn\":<int>,\"tokOut\":<int>}; const out = validateEntry(candidate); console.log(out); if (out !== 'OK') { process.exit(1); }" }
+{ "language": "javascript", "code": "const { validateEntry } = require(process.env.CLAUDE_PROJECT_DIR + '/scripts/validate-entry.js'); const candidate = {\"schema\":\"1\",\"ts\":\"<ISO8601 UTC>\",\"scope\":\"<full|path:X|diff:X>\",\"crit\":<int>,\"high\":<int>,\"med\":<int>,\"low\":<int>,\"info\":<int>,\"report\":\"<rel path>\",\"v\":\"<X.Y.Z>\",\"tokIn\":<int>,\"tokOut\":<int>}; const out = validateEntry(candidate); console.log(out); if (out !== 'OK') { process.exit(1); }" }
 ```
 
 This loads the validator source via `require()` (the sandbox sets `CLAUDE_PROJECT_DIR` to the repo root, and Node handles the validator's shebang line), runs `validateEntry()` against your candidate object, and prints `OK` or `FAIL: <reason>`.
@@ -437,7 +438,7 @@ This loads the validator source via `require()` (the sandbox sets `CLAUDE_PROJEC
 - If the line is `OK` → print `STATUS: entry-ok` and proceed to Step 7.
 - If the line starts with `FAIL:` → fix the entry per the message, re-issue THIS Step 6 call.
 
-You MUST NOT proceed to Step 7 unless you have printed `STATUS: entry-ok`. If the candidate uses any field name not in `{ts, scope, crit, high, med, low, info, report, v, tokIn, tokOut}`, this gate will FAIL with `unexpected field <name>` (the validator enforces `additionalProperties: false`).
+You MUST NOT proceed to Step 7 unless you have printed `STATUS: entry-ok`. If the candidate uses any field name not in `{schema, ts, scope, crit, high, med, low, info, report, v, tokIn, tokOut}`, this gate will FAIL with `unexpected field <name>` (the validator enforces `additionalProperties: false`).
 
 ### Step 7 — Append to .codelens/reviews.log (ONLY after G1+G2+G3 markers printed)
 

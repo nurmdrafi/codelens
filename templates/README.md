@@ -3,7 +3,7 @@
 Output contracts the agent fills in at Phase 4. Both shapes live in this folder:
 
 - **[`report.md`](./report.md)** — Markdown report template (placeholder skeleton with a fully-worked example embedded). The agent consults this at Phase 4 via `ctx_execute_file`.
-- **[`reviews-entry.json`](./reviews-entry.json)** — Flat 11-field entry appended to `.codelens/reviews.log` per review. One object per completed review. `schema` field is **required** — current shape is schema v1.
+- **[`reviews-entry.json`](./reviews-entry.json)** — Flat 12-field entry appended to `.codelens/reviews.log` per review. One object per completed review. `schema` field is **required** — current value is `"1"`, bumped when the entry shape changes in a breaking way.
 
 The rules and translation maps below apply to **both** outputs.
 
@@ -41,7 +41,7 @@ Phase 4 → "Compile Report"
                  → prints STATUS: complete
 ```
 
-All 11 entry fields (`ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`, plus required `schema`) are always populatable from the review's runtime state. No fallback-to-zero / unknown handling needed.
+All 12 entry fields (`schema`, `ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) are always populatable from the review's runtime state. No fallback-to-zero / unknown handling needed. `schema` follows a numeric-string bump policy: `"1"` is the current shape; future breaking changes bump to `"2"`, `"3"`, etc.
 
 ## Pattern name translation map (Phase 3 → report)
 

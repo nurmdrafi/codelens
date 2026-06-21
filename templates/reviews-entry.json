@@ -5,10 +5,11 @@
   "description": "Minimal flat entry for .codelens/reviews.log. One object per review. Short keys keep each entry on a single line. The full report lives at `report`; this entry is just a log line.",
 
   "type": "object",
-  "required": ["ts", "scope", "crit", "high", "med", "low", "info", "report", "v", "tokIn", "tokOut"],
+  "required": ["schema", "ts", "scope", "crit", "high", "med", "low", "info", "report", "v", "tokIn", "tokOut"],
   "additionalProperties": false,
 
   "properties": {
+    "schema": { "type": "string", "pattern": "^\\d+$", "description": "Entry schema version. Current: \"1\". Bumped when the entry shape changes in a breaking way." },
     "ts":     { "type": "string", "format": "date-time", "description": "ISO 8601 UTC timestamp." },
     "scope":  { "type": "string", "description": "full | path:<target> | diff:<target>." },
     "crit":   { "type": "integer", "minimum": 0 },

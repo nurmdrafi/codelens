@@ -2,8 +2,11 @@
 /**
  * validate-entry.js — hand-written structural check for .codelens/reviews.log entries.
  *
- * Validates the flat short-key shape (9 fields, no nesting):
- *   { ts, scope, crit, high, med, low, info, report, v }
+ * Validates the flat short-key shape (12 fields, no nesting):
+ *   { schema, ts, scope, crit, high, med, low, info, report, v, tokIn, tokOut }
+ *
+ * schema is required and must match ^\d+$ (current: "1"). Bumped when the entry
+ * shape changes in a breaking way.
  *
  * Prints OK or FAIL: <reason>. Exits 0 / 1.
  *
@@ -12,9 +15,10 @@
  *   cat entry.json | node scripts/validate-entry.js
  */
 
-const REQUIRED_FIELDS = ['ts', 'scope', 'crit', 'high', 'med', 'low', 'info', 'report', 'v', 'tokIn', 'tokOut'];
+const REQUIRED_FIELDS = ['schema', 'ts', 'scope', 'crit', 'high', 'med', 'low', 'info', 'report', 'v', 'tokIn', 'tokOut'];
 const INT_FIELDS = ['crit', 'high', 'med', 'low', 'info', 'tokIn', 'tokOut'];
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
+const SCHEMA_RE = /^\d+$/;
 
 function validateEntry(entry) {
   if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
@@ -27,6 +31,10 @@ function validateEntry(entry) {
 
   const extras = Object.keys(entry).filter(k => !REQUIRED_FIELDS.includes(k));
   if (extras.length) return `FAIL: unexpected field ${extras[0]}`;
+
+  if (typeof entry.schema !== 'string' || !SCHEMA_RE.test(entry.schema)) {
+    return 'FAIL: schema must be a numeric string (e.g., "1")';
+  }
 
   if (typeof entry.ts !== 'string' || !entry.ts) {
     return 'FAIL: ts must be a non-empty string';
