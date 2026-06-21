@@ -16,7 +16,7 @@ Markdown only — skills, agents, configs. No build step, no runtime dependencie
 /codelens:review (NL-driven dispatcher, ~2.5KB)
   → reads $ARGUMENTS, infers {domains, scope, scopeTarget, outputFile}
   → AskUserQuestion fallback when bare/ambiguous
-  → codelens-reviewer agent (single invocation, ~450 lines):
+  → codelens-reviewer agent (single invocation, ~490 lines):
       Phase 0: Dependency preflight (ctx_stats only — fail-fast on missing MCP)
       Phase 0.5: Load config/custom-checks.json + config/languages.json (skip silently if absent)
       Phase 1+2: Inventory + Patterns + Risk Signals (ONE ctx_batch_execute, concurrency=8)
