@@ -141,7 +141,25 @@ If fails: halt with install hint. If errors during Phase 1-2: rg missing → bre
 
 ## Phase 1+2: Inventory + Patterns (ONE ctx_batch_execute)
 
-**scopePath:** full→., path→config.scopeTarget, diff→git diff --name-only
+### Scope resolution (REQUIRED — runs before any Phase 1+2 command)
+
+The scope config determines how every `<scopePath>` token below is substituted. The `diff` scope produces a multi-line file list that **cannot** be substituted as a single path argument — it must be materialized to a temp file and consumed via `rg --files-from` (or `xargs` for non-rg tools).
+
+| `config.scope` | `<scopePath>` substitution | rg commands | non-rg commands |
+|---|---|---|---|
+| `full` | `.` | `rg ... <EXCL>` (literal `.`) | `find . ...`, `biome lint .` |
+| `path` | `config.scopeTarget` (e.g. `src/auth`) | `rg ... <scopePath> <EXCL>` | `find <scopePath> ...`, `biome lint <scopePath>` |
+| `diff` | (n/a — use temp file) | `rg --files-from <tmpfile> ... <EXCL>` | `cat <tmpfile> \| xargs -d '\n' <tool> <args>` |
+
+**For `diff` scope only — materialize the file list ONCE before the batch:**
+
+```json
+{ "language": "shell", "code": "git diff --name-only \"${scopeTarget}\" > \"${TMPDIR:-/tmp}/codelens-diff-files-$$.txt\" && echo wrote $(wc -l < \"${TMPDIR:-/tmp}/codelens-diff-files-$$.txt\") files to codelens-diff-files-$$.txt" }
+```
+
+The model substitutes `${scopeTarget}` with the literal `config.scopeTarget` (e.g. `main..HEAD`). The `$$` is the shell PID — guarantees concurrent reviews don't collide. **After this call returns**, the temp file exists for the duration of the review; every `<scopePath>` reference in the batch below uses the `diff` column of the table above.
+
+**Temp file cleanup:** recorded for Phase 4 — the cleanup sub-step after Step 7 removes this file only when `config.scope == "diff"`.
 
 **Exclusions:** Read config/exclusions.json, build EXCL flags. Fallback: -g '!node_modules' -g '!dist' -g '!.next' -g '!*.min.js' -g '!*.min.css' -g '!*.map' -g '!package-lock.json' -g '!yarn.lock' -g '!pnpm-lock.yaml'
 
@@ -417,6 +435,16 @@ Precondition: your transcript so far in Phase 4 contains all three lines:
 If any is missing, **STOP. Do not append.** Print `STATUS: partial reason=missing-marker:<which>`.
 
 If all three are present: create `.codelens/reviews.log` with `[]` if missing. Read current contents, append the validated entry, write back via native `Write`. Then print `STATUS: complete` as the final line.
+
+### Step 8 — Cleanup (diff scope only)
+
+If `config.scope == "diff"`: remove the Phase 1+2 temp file so concurrent reviews and the user's tempdir stay clean. This step is a no-op for `full` and `path` scopes.
+
+```json
+{ "language": "shell", "code": "rm -f \"${TMPDIR:-/tmp}/codelens-diff-files-$$.txt\" && echo cleaned-diff-tempfile" }
+```
+
+This step runs after the entry is appended. A failure here is non-fatal — the review is already complete and committed to `reviews.log`. Print `STATUS: cleanup-ok` regardless (best-effort).
 
 ### Terminal guard (after step 7)
 
