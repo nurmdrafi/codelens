@@ -8,7 +8,7 @@
 
 Built on a token-efficient 3-phase pipeline that reads files once and shares extraction data across all domain reviewers.
 
-> **v0.0.1 (beta)** — architecture rebuild for token efficiency. `/codelens:help` → `/codelens:doctor`. `--fallow` and `--ast-grep` flags dropped. See `CHANGELOG.md` for full breaking-change list.
+> **v0.0.10 (beta — no backward compatibility guaranteed)** — install is now self-contained (MCP servers bundled, npm CLIs auto-fetched via `npx`), the agent is config-driven extensible (`config/custom-checks.json`, `config/languages.json`), and the doctor is stack-aware. The `reviews.log` shape may change before v1.0. See `CHANGELOG.md` for the full change list.
 
 > **We want contributors!** If you care about code quality, security, or accessibility, please consider [submitting a PR](CONTRIBUTING.md). Every new pattern check helps developers ship better software.
 
@@ -57,7 +57,24 @@ The 2 `/codelens:*` skills are thin dispatch wrappers. `/codelens:review` resolv
 /plugin install codelens
 ```
 
-Requires [Claude Code](https://claude.ai/code) CLI, desktop app, or IDE extension.
+That single command provisions everything codelens needs:
+
+- **MCP servers** (`context-mode`, `context7`) auto-install via the `mcpServers` block in `plugin.json` — no separate `/plugin install context-mode` or `/plugin install context7` needed.
+- **npm CLIs** (biome, fallow, tsc, ast-grep) auto-fetch via `npx` on first use with a `command -v <binary>` fast-path. Pre-installing them is faster but optional.
+- **`rg` (ripgrep)** is the one prerequisite codelens can't bundle — it's a native binary with a per-OS/arch install matrix.
+
+```bash
+# ripgrep — macOS
+brew install ripgrep
+
+# ripgrep — Ubuntu/Debian
+sudo apt install ripgrep
+
+# ripgrep — Windows
+winget install BurntSushi.ripgrep.MSVC
+```
+
+Requires [Claude Code](https://claude.ai/code) CLI, desktop app, or IDE extension. After install, run `/codelens:doctor` to confirm everything is wired up.
 
 ## Quick Start
 
@@ -80,61 +97,14 @@ Requires [Claude Code](https://claude.ai/code) CLI, desktop app, or IDE extensio
 
 After scanning, codelens writes a report at your project root: `<DOMAIN>_REPORT.md` for single-domain runs (e.g. `SECURITY_REPORT.md`), `CODEBASE_ANALYSIS_REPORT.md` for multi-domain full/path reviews, or `PR_REVIEW_<range>.md` for diff reviews — all with findings organized by severity.
 
-## Required Setup
-
-codelens requires three external tools. Install them before using:
-
-### 1. ripgrep (`rg`)
-
-Fast pattern-based code search. Required by all agents.
-
-```bash
-# macOS
-brew install ripgrep
-
-# Ubuntu/Debian
-sudo apt install ripgrep
-
-# Windows
-winget install BurntSushi.ripgrep.MSVC
-```
-
-### 2. Context7 MCP
-
-Library documentation lookup for security CVE verification, deprecated API detection, architecture pattern validation, and component-library accessibility checks. Required by the `codelens-reviewer` agent.
-
-```bash
-/plugin marketplace add anthropics/claude-plugins-official   # if not already added
-/plugin install context7
-```
-
-Source: [github.com/nurmdrafi/codelens](https://github.com/nurmdrafi/codelens) | [Context7 docs](https://context7.com)
-
-### 3. context-mode MCP
-
-Sandboxed file processing that prevents context window flooding during large-scale analysis. Required by the `codelens-reviewer` agent. Verified via `ctx_stats` before proceeding.
-
-```bash
-/plugin marketplace add mksglu/context-mode
-/plugin install context-mode
-```
-
-### Verify installation
-
-```
-/codelens:doctor
-```
-
-This runs setup diagnostics and prints `[OK]`/`[WARN]`/`[FAIL]` status for each dependency, with concrete fix commands for anything missing or misconfigured.
-
 ## Optional Tools
 
-codelens v0.0.7+ integrates **four** purpose-built tools when installed, falling back to rg patterns when not. All install in under a minute via npm and meaningfully improve finding quality on JS/TS codebases. None are required — codelens runs to completion with zero optional tools installed.
+codelens integrates **four** purpose-built tools on JS/TS codebases. None are required — all auto-fetch via `npx` on first use if not pre-installed, and codelens runs to completion with zero of them on disk. Pre-installing skips the 5–30s first-run `npx` fetch.
 
 ### Biome (lint + accessibility + complexity)
 
 ```bash
-npm install -g @biomejs/biome
+npm install -g @biomejs/biome      # optional — npx fetches it otherwise
 ```
 
 Provides 490+ lint rules covering correctness, suspicious patterns, complexity, performance, style, and 15+ JSX/HTML accessibility checks. In Phase 2 the agent pipes Biome's JSON output for the complexity signal used in hotspot ranking; in Phase 4 the rule categories map to severity (a11y → High, correctness/suspicious → Quality, complexity → Medium, style → Low). Catches SVG accessibility, noArrayIndexKey, noDangerouslySetInnerHtml, and many others rg patterns miss.
@@ -142,7 +112,7 @@ Provides 490+ lint rules covering correctness, suspicious patterns, complexity, 
 ### fallow (codebase intelligence)
 
 ```bash
-npm install -g fallow
+npm install -g fallow              # optional — npx fetches it otherwise
 ```
 
 Rust-native AST analysis. Adds dead-code detection (unused files/exports/dependencies), token-based duplication, complexity hotspot scoring, circular dependency detection, and a project maintainability health score. Phase 2 runs three fallow subcommands (`dead-code`, `health`, `dupes`); Phase 4 maps the outputs — circular deps → Architecture High, low maintainability → Architecture Medium, dead-code/dupes → Quality Medium.
@@ -159,21 +129,25 @@ Adds TypeScript semantic analysis that static linters cannot reach. Phase 2 runs
 ### ast-grep (structural search)
 
 ```bash
-npm install -g @ast-grep/cli
+npm install -g @ast-grep/cli       # optional — npx fetches it otherwise
 ```
 
 AST-based pattern matching — understands JSX/TS syntax rather than treating code as text. Phase 3 uses ast-grep for the per-hotspot deep-dive (xss/eval/empty-catch/a11y patterns). When ast-grep is missing, Phase 3 transparently falls back to rg via an availability check (`command -v sg`). Findings are still produced — just line-based rather than syntax-aware, so precision on edge cases (e.g. `dangerouslySetInnerHTML` inside string literals) is lower.
 
+### Stack-aware behavior
+
+The doctor detects your project's stack (js-ts / python / php / go / rust / unknown) and only checks the tools relevant to that stack. On a Python repo, for example, biome/tsc/fallow/ast-grep checks are skipped with `[SKIP]` — not warnings.
+
 ### Without these tools
 
-codelens runs fine with any subset (or none) installed. Per-tool fallback behavior:
+codelens runs fine with any subset (or none) pre-installed. Per-tool fallback behavior:
 
-- **Biome missing** → complexity signal zeroed, hotspot ranking re-weights the remaining three signals (loc, finding density, import centrality). Lint/a11y findings via rg patterns.
-- **fallow missing** → dead-code, duplication, and maintainability signals skipped. Report notes the gap.
-- **TypeScript missing** → no TS semantic findings. JS-only codebases are unaffected.
-- **ast-grep missing** → Phase 3 uses rg fallback. Same finding categories, slightly lower precision.
+- **Biome missing** → auto-fetched via `npx` on first use, or complexity signal zeroed if `npx` also unavailable. Hotspot ranking re-weights the remaining three signals (loc, finding density, import centrality). Lint/a11y findings via rg patterns.
+- **fallow missing** → auto-fetched via `npx`, or dead-code/duplication/maintainability signals skipped.
+- **TypeScript missing** → auto-fetched via `npx`, or no TS semantic findings. JS-only codebases are unaffected.
+- **ast-grep missing** → auto-fetched via `npx`, or Phase 3 uses rg fallback. Same finding categories, slightly lower precision.
 
-No errors, no degraded core review — just narrower coverage. Run `/codelens:doctor` to see which optional tools are detected.
+No errors, no degraded core review — just narrower coverage. Run `/codelens:doctor` to see which optional tools are detected and which stack was identified.
 
 ## Commands
 
@@ -264,9 +238,9 @@ This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/r
 
 **Phase 3 — Hotspot Deep-Dive (single-pass):** For the top 10–15 largest files, ONE `ctx_execute_file` call per file. Processing code reads `config.domains` and runs `if (CHECKS.includes("security")) {...}` branches — only requested domains' signals extracted. Files are read **exactly once**.
 
-**Phase 4 — Compile Report:** Native `Write` to the report file at repo root. Severity-first ordering, cross-domain dedup (same `file:line` ±2 lines merged). Appends one 6-field entry to `.codelens/reviews.json` (`timestamp`, `scope`, `summary`, `findings`, `reportPath`, `reviewerVersion`).
+**Phase 4 — Compile Report:** Three structural `STATUS:` gates (`gates-loaded`, `report-ok`, `entry-ok`) print in strict order before any file is written. Native `Write` to the report file at repo root. Severity-first ordering, cross-domain dedup (same `file:line` ±2 lines merged). Appends one 11-field entry (`ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) plus required `schema: "1"` to `.codelens/reviews.log`.
 
-The agent is **stateless**: no persisted intermediate JSON, no checkpoints, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body.
+The agent is **stateless across reviews**: no persisted intermediate JSON, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body. **Phase 4 is the exception** — the three `STATUS:` markers must print in order before the entry is appended, so output drift fails loud, not silent.
 
 ## Report Preview
 
@@ -314,18 +288,18 @@ See [`templates/report.md`](templates/report.md) for the report template — inc
 Install ripgrep: `brew install ripgrep` (macOS) or `apt install ripgrep` (Linux).
 
 ### "context-mode MCP not connected"
-The pipeline requires context-mode for sandboxed extraction. Without it, agents fall back to raw tools (higher token usage, slower). Install it:
+The pipeline requires context-mode for sandboxed extraction. Without it, agents fall back to raw tools (higher token usage, slower). Both MCP servers are bundled in `plugin.json` — reinstall the plugin to re-trigger provisioning:
 ```
-/plugin marketplace add mksglu/context-mode
-/plugin install context-mode
+/plugin install codelens
 ```
 Then restart your Claude Code session.
 
 ### "Context7 MCP not connected"
-The `codelens-reviewer` agent needs Context7 for library verification. Install it:
+The `codelens-reviewer` agent needs Context7 for library verification. Context7 is bundled in `plugin.json` — reinstall the plugin to re-trigger provisioning:
 ```
-/plugin install context7
+/plugin install codelens
 ```
+Then restart your Claude Code session.
 
 ### Review produces no findings
 - Verify the scan path contains source files (not just config/data files)
@@ -381,7 +355,7 @@ codelens/
 │   └── exclusions.json        # Exclusion patterns (defaults + byDomain + keepInScope)
 ├── templates/                   # Output contracts (agent-loaded at Phase 4)
 │   ├── report.md              # Markdown report template (placeholder skeleton)
-│   ├── reviews-entry.json     # Minimal 6-field entry shape for .codelens/reviews.json
+│   ├── reviews-entry.json     # Flat 11-field entry shape for .codelens/reviews.log (schema required, v1)
 │   └── README.md              # Abstraction rules + translation maps
 ├── references/                   # Local-only design references (gitignored)
 │   └── codebase-analyzer.md   # Structural pattern the agent body follows

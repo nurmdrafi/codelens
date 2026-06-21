@@ -21,7 +21,7 @@ Single entry point. Resolves `{domains, scope, scopeTarget, outputFile}` from th
 
 2. If `$ARGUMENTS` is empty OR any field is ambiguous, call `AskUserQuestion` to resolve only the ambiguous fields. Defaults: domains=[all four], scope picker [full, path, diff]. If scope=path chosen, follow up for the path string. Do not ask about fields the prompt already disambiguated.
 
-3. Dispatch `codelens-reviewer` with the resolved config. Agent runs Phases 0–4 in one turn and writes the report + `.codelens/reviews.json` entry.
+3. Dispatch `codelens-reviewer` with the resolved config. Agent runs Phases 0–4 in one turn and writes the report + appends one 11-field entry to `.codelens/reviews.log`.
 
 ## Examples
 
