@@ -364,14 +364,14 @@ The report template defines the EXACT report structure (fully-worked example emb
 Follow `templates/report.md` exactly. Critical structural rules:
 
 - Title: `# Codebase Analysis Report: <project-name>`
-- Header block: `**Date:**`, `**Stack:**`, `**Scope:** (<N> files scanned)`, `**Reviewer:** codelens v<version>`
+- Header block: `**Date:**`, `**Stack:**`, `**Scope:** (<N> files scanned)`, `**Reviewer:** v<version>`
 - First section after `---` is `## Scorecard` — a two-column table with `Severity | Count` on the left and `Domain | Count` on the right. NOT letter grades. NOT `Domain | Score | Notes`. The exact shape is in the template.
 - Severity sections in order: Critical → High → Medium → Low → Informational. Emit only those with findings > 0. Header format: `## <Severity> (<count>)`.
 - `## What's Done Well` — one `### <Domain>` subsection per requested domain.
 - `## Priority Actions` — four subsections: Immediate (Week 1), Short-Term (Week 2-3), Medium-Term (Month 1), Backlog.
 - `## Methodology` — one paragraph + per-domain table.
 
-Cross-domain dedup: if same file:line (±2 lines) appears in multiple domains, merge into single row. The severity counts (`crit`/`high`/`med`/`low`/`info`) in the reviews.log entry reflect post-dedup totals.
+Cross-domain dedup: same file:line (±2 lines) across domains merges into one row. Severity counts (`crit`/`high`/`med`/`low`/`info`) in the reviews.log entry reflect post-dedup totals. *Per `<constraints>`:* severity-first ordering, What's Done Well per domain, phased Priority Actions, Methodology section — all mandated there, not restated here.
 
 ### Step 3 — Write the markdown report
 
@@ -426,12 +426,7 @@ You MUST NOT proceed to Step 7 unless you have printed `STATUS: entry-ok`. If th
 
 ### Step 7 — Append to .codelens/reviews.log (ONLY after G1+G2+G3 markers printed)
 
-Precondition: your transcript so far in Phase 4 contains all three lines:
-- `STATUS: gates-loaded` (Step 1)
-- `STATUS: report-ok`    (Step 4)
-- `STATUS: entry-ok`     (Step 6)
-
-If any is missing, **STOP. Do not append.** Print `STATUS: partial reason=missing-marker:<which>`.
+Precondition (*per `<constraints>`: Phase 4 gates mandatory*): your transcript contains all three markers — `STATUS: gates-loaded` (Step 1), `STATUS: report-ok` (Step 4), `STATUS: entry-ok` (Step 6). If any is missing, **STOP. Do not append.** Print `STATUS: partial reason=missing-marker:<which>`.
 
 If all three are present: create `.codelens/reviews.log` with `[]` if missing. Read current contents, append the validated entry, write back via native `Write`. Then print `STATUS: complete` as the final line.
 
