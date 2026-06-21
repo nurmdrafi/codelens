@@ -136,17 +136,44 @@ ctx_stats()
 
 If fails: halt with install hint. If errors during Phase 1-2: rg missing → brew install ripgrep; context-mode MCP → /plugin marketplace add mksglu/context-mode; Context7 MCP → /plugin marketplace add upstash/context7.
 
-## Phase 0.5: Load custom checks config (optional)
+## Phase 0.5: Load custom checks + languages config
 
-Load `config/custom-checks.json` (evidence-based company-specific checks). File is optional — missing or empty file means zero custom checks, which is fine.
+Load two optional config files in parallel via one `ctx_execute` call:
+
+- `config/custom-checks.json` — evidence-based company-specific checks.
+- `config/languages.json` — multi-language tool selection. `js-ts` is fully populated; `python`/`php`/`go`/`rust` are placeholders.
 
 Issue this `ctx_execute` call verbatim:
 
 ```json
-{ "language": "javascript", "code": "const fs=require('fs');const path=require('path');const p=path.join(process.env.CLAUDE_PROJECT_DIR||'.','config','custom-checks.json');try{const c=JSON.parse(fs.readFileSync(p,'utf8'));console.log('LOADED custom-checks.json count='+c.checks.length);}catch(e){console.log('NO custom-checks.json (ok)');}" }
+{ "language": "javascript", "code": "const fs=require('fs');const path=require('path');const root=process.env.CLAUDE_PROJECT_DIR||'.';function load(name){const p=path.join(root,'config',name);try{const c=JSON.parse(fs.readFileSync(p,'utf8'));return c;}catch(e){return null;}}const cc=load('custom-checks.json');const ll=load('languages.json');console.log('LOADED custom-checks.json count='+(cc&&(cc.checks||[]).length||0));console.log('LOADED languages.json langs='+Object.keys(ll&&ll.languages||{}).join(','));" }
 ```
 
-After the call returns, store the loaded checks array for Phase 1+2 batch injection (Phase 1+2 step below) and Phase 4 finding emit. If the loader printed `NO custom-checks.json`, treat the array as empty.
+After the call returns, store both:
+- **customChecks** — the `checks` array (or `[]` if missing). Used in Phase 1+2 injection + Phase 4 Step 1.5.
+- **languages** — the `languages` map (or `{}` if missing). Used in Phase 1 stack detection, Phase 1+2 batch building, Phase 3 astGrepLang/patterns, Phase 4 severity mappings.
+
+## Phase 1: Stack detection (config-driven)
+
+Identify the project's primary language using the loaded `languages` config. For each language entry (in the order returned by `Object.keys`), check whether any of its `manifestFiles` exist in the current working directory. First match wins. If none match, `primaryLang = 'unknown'`.
+
+```javascript
+// Pseudocode
+let primaryLang = 'unknown';
+if (languages) {
+  for (const [name, cfg] of Object.entries(languages)) {
+    if (cfg.manifestFiles && cfg.manifestFiles.some(f => fs.existsSync(f))) {
+      primaryLang = name;
+      break;
+    }
+  }
+}
+// If languages.json is missing OR primaryLang stays 'unknown', all
+// Phase 1+2 lint/typecheck/deadCode signals degrade gracefully (skipped
+// or rg-only) — same behavior as v0.0.9 on non-JS/TS codebases.
+```
+
+Store `primaryLang` for the rest of Phase 1+2, Phase 3, and Phase 4.
 
 ## Phase 1+2: Inventory + Patterns (ONE ctx_batch_execute)
 
@@ -172,6 +199,19 @@ The model substitutes `${scopeTarget}` with the literal `config.scopeTarget` (e.
 
 **Exclusions:** Read config/exclusions.json, build EXCL flags. Fallback: -g '!node_modules' -g '!dist' -g '!.next' -g '!*.min.js' -g '!*.min.css' -g '!*.map' -g '!package-lock.json' -g '!yarn.lock' -g '!pnpm-lock.yaml'
 
+**Config-driven command building (per primaryLang):** The commands below marked `<from-config>` are built from `primaryLang`'s entry in `languages.json`. The pattern is:
+
+```javascript
+// Pseudocode: build a config-driven lint/typecheck/deadCode command
+function buildLangCmd(kind) {
+  const cfg = languages[primaryLang] && languages[primaryLang][kind];
+  if (!cfg || cfg._todo || !cfg.command) return null;  // skip if not populated for this lang
+  return `sh -c '( ${cfg.binaryCheck} && ${cfg.command} || ${cfg.npxFallback} )' 2>/dev/null || echo '${cfg.notAvailableSignal}'`;
+}
+```
+
+For `primaryLang === 'js-ts'`: r3-complexity uses `buildLangCmd('lint')`, p2-biome uses the same with `--reporter=summary`, p2-tsc uses `buildLangCmd('typecheck')`, the fallow sub-commands (below the main batch) use `buildLangCmd('deadCode')` / `'health'` / `'dupes'`. For `primaryLang === 'unknown'` or any placeholder language: these signals are skipped (no commands added to the batch) — r2/r4 still drive hotspot selection; report notes the gap.
+
 **Single call, concurrency=8:**
 
 ```javascript
@@ -182,14 +222,14 @@ ctx_batch_execute({
     // RISK SIGNALS for weighted hotspot selection (P2). r1-loc is the single LOC source.
     {label: "r1-loc",            command: "find <scopePath> -type f \\( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' \\) -exec wc -l {} + 2>/dev/null | rg -v ' total$'"},
     {label: "r2-finding-density",command: "rg --count -e 'eval\\(|innerHTML|catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}|console\\.log|TODO|FIXME' <scopePath> <EXCL> 2>/dev/null"},
-    {label: "r3-complexity",     command: "sh -c '( command -v biome >/dev/null 2>&1 && biome lint <scopePath> --reporter=json || npx --yes @biomejs/biome lint <scopePath> --reporter=json )' 2>/dev/null | rg -o '\"path\":\"[^\"]+\"' | sort | uniq -c | sort -rn | head -20 || echo 'biome-not-available'"},
+    {label: "r3-complexity",     command: "<from-config: buildLangCmd('lint')> — js-ts example: sh -c '( command -v biome >/dev/null 2>&1 && biome lint <scopePath> --reporter=json || npx --yes @biomejs/biome lint <scopePath> --reporter=json )' 2>/dev/null | rg -o '\"path\":\"[^\"]+\"' | sort | uniq -c | sort -rn | head -20 || echo 'biome-not-available'"},
     {label: "r4-centrality",     command: "rg --count '^import .* from' <scopePath> <EXCL> 2>/dev/null | sort -rn | head -20"},
     {label: "p2-sec-patterns", command: "rg --no-heading -n -e 'localStorage\\.(getItem|setItem)' -e 'dangerouslySetInnerHTML' -e 'eval\\(' -e 'innerHTML|outerHTML' -e 'Authorization.*Bearer' <scopePath> <EXCL> 2>/dev/null"},
     {label: "p2-sec-secrets", command: "rg -i --no-heading -n -e 'SECRET' -e 'PASSWORD' -e 'API_KEY' -e 'TOKEN' <scopePath> <EXCL> 2>/dev/null | rg -v 'process\\.env|\\.env|config' || true"},
     {label: "p2-quality", command: "rg --count -e 'console\\.log' -e 'TODO|FIXME|HACK|XXX' -e 'eslint-disable' -e 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}' <scopePath> <EXCL> 2>/dev/null"},
     {label: "p2-a11y", command: "rg --no-heading -n '<img' <scopePath> <EXCL> 2>/dev/null | rg -v 'alt='; rg --no-heading -n '<button' <scopePath> <EXCL> 2>/dev/null | rg -v 'aria-label'"},
-    {label: "p2-biome", command: "sh -c '( command -v biome >/dev/null 2>&1 && biome lint <scopePath> --reporter=summary || npx --yes @biomejs/biome lint <scopePath> --reporter=summary )' 2>/dev/null | tail -10 || echo 'biome-not-available'"},
-    {label: "p2-tsc", command: "sh -c '( test -x ./node_modules/.bin/tsc && ./node_modules/.bin/tsc -p . --noEmit --skipLibCheck --pretty false || npx --yes --package=typescript tsc -p . --noEmit --skipLibCheck --pretty false )' 2>/dev/null | head -c 4000 || echo 'tsc-not-available'"}
+    {label: "p2-biome", command: "<from-config: buildLangCmd('lint') with --reporter=summary>"},
+    {label: "p2-tsc", command: "<from-config: buildLangCmd('typecheck')> — js-ts example: sh -c '( test -x ./node_modules/.bin/tsc && ./node_modules/.bin/tsc -p . --noEmit --skipLibCheck --pretty false || npx --yes --package=typescript tsc -p . --noEmit --skipLibCheck --pretty false )' 2>/dev/null | head -c 4000 || echo 'tsc-not-available'"}
   ],
   concurrency: 8,
   queries: ["file count", "tech stack dependencies", "security findings", "quality issues", "a11y violations", "biome summary", "TS2 type errors", "TS6133 unused", "TS2531 null deref", "TS2304 cannot find name", "TS2307 cannot find module", "loc per file r1", "finding density r2", "complexity hotspots r3", "import centrality r4"]
@@ -241,7 +281,13 @@ ctx_batch_execute({
 })
 ```
 
-**Mapping:** Biome lint/a11y/* → a11y High; lint/suspicious/*, lint/correctness/* → Quality; lint/complexity/* → Quality Medium; lint/style/* → Quality Low. Fallow dead-code → Quality Medium; dupes → Quality Medium; circular_dep_count>0 → Architecture High; hotspot_count>0 → Architecture Medium; maintainability_low_pct>20 → Architecture Medium. **tsc mapping:** `TS2xxx` (type errors) → Quality High; `TS2531/2532` (null deref / null safety) → Quality High; `TS6133` (unused locals/imports/params) → Quality Medium; `TS2304/2307` (cannot find name/module) → Quality Medium. Cross-reference each tsc finding's file:line via `ctx_search(queries:["<TS-code> <filename>"])` to attach evidence.
+**Mapping (config-driven from `languages[primaryLang].severityMappings`):** Apply the loaded severity-mapping table. For `js-ts`, the table includes:
+
+- Biome `lint/a11y/*` → a11y High; `lint/suspicious/*` + `lint/correctness/*` → Quality High; `lint/complexity/*` → Quality Medium; `lint/style/*` → Quality Low.
+- tsc `TS2xxx`/`TS2531`/`TS2532` → Quality High; `TS6133`/`TS2304`/`TS2307` → Quality Medium.
+- Fallow: `circular-deps` → Architecture High; `low-maintainability`/`hotspot` → Architecture Medium; `dead-code`/`dupes` → Quality Medium.
+
+For `primaryLang === 'unknown'` or any placeholder language (empty `severityMappings`): skip these mappings — findings come from the generic rg-based Phase 2 signals only. Cross-reference each tsc finding's file:line via `ctx_search(queries:["<TS-code> <filename>"])` to attach evidence.
 
 **If both missing:** Note in report: Dead-code and duplication analysis skipped — fallow not installed. Lint+a11y via rg fallback — Biome not installed.
 
@@ -277,16 +323,24 @@ Top 10–15 files by **riskScore** from Phase 1 (hard cap: 15). ALL hotspots are
 const HOTSPOTS = ["<file1>", "<file2>", ..., "<file15>"];  // top 15 by riskScore
 const cmds = [];
 
+// AST_LANG and PATTERNS come from languages[primaryLang].astGrepLang + phase3Patterns.
+// For primaryLang === 'js-ts': AST_LANG = "tsx,jsx,ts,js", patterns include xss-innerhtml,
+// xss-eval, empty-catch, btn-no-aria, img-no-alt. For 'unknown' or any placeholder language
+// without phase3Patterns populated, all ast-grep pushes are skipped (rg-only Phase 3).
+const AST_LANG = (languages[primaryLang] && languages[primaryLang].astGrepLang) || null;
+const PATTERNS = (languages[primaryLang] && languages[primaryLang].phase3Patterns) || {};
+
 for (const FILE of HOTSPOTS) {
+  if (!AST_LANG || !PATTERNS) continue;  // skip ast-grep entirely for unknown langs
   // SECURITY
   if (config.domains.includes('security')) {
-    cmds.push({label: "ag-xss-innerhtml-" + cmds.length, command: "(sg run -p '$$.innerHTML' -l tsx,jsx,ts,js \"" + FILE + "\" 2>/dev/null || rg -n -e 'innerHTML' -e 'dangerouslySetInnerHTML' \"" + FILE + "\" 2>/dev/null) || echo none"});
-    cmds.push({label: "ag-xss-eval-" + cmds.length,       command: "(sg run -p 'eval($$$ARGS)' -l ts,js \"" + FILE + "\" 2>/dev/null || rg -n 'eval\\(' \"" + FILE + "\" 2>/dev/null) || echo none"});
+    if (PATTERNS['xss-innerhtml']) cmds.push({label: "ag-xss-innerhtml-" + cmds.length, command: "(sg run -p '" + PATTERNS['xss-innerhtml'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null || rg -n -e 'innerHTML' -e 'dangerouslySetInnerHTML' \"" + FILE + "\" 2>/dev/null) || echo none"});
+    if (PATTERNS['xss-eval'])      cmds.push({label: "ag-xss-eval-" + cmds.length,       command: "(sg run -p '" + PATTERNS['xss-eval'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null || rg -n 'eval\\(' \"" + FILE + "\" 2>/dev/null) || echo none"});
   }
   // ARCHITECTURE — imports/exports sourced from fallow (Phase 2). No regex here.
   // QUALITY
   if (config.domains.includes('quality')) {
-    cmds.push({label: "ag-empty-catch-" + cmds.length,    command: "(sg run -p 'catch($E) {}' -l ts,js \"" + FILE + "\" 2>/dev/null || rg -n 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}' \"" + FILE + "\" 2>/dev/null) || echo none"});
+    if (PATTERNS['empty-catch'])   cmds.push({label: "ag-empty-catch-" + cmds.length,    command: "(sg run -p '" + PATTERNS['empty-catch'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null || rg -n 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}' \"" + FILE + "\" 2>/dev/null) || echo none"});
   }
   // console.log, hardcoded-secret, localstorage: sourced from Phase 2 rg batch — re-verify via ctx_search.
   // A11Y — JSX self-closing tags use `/>`. Note: ast-grep-first chains must use `command -v sg` check,
@@ -295,8 +349,8 @@ for (const FILE of HOTSPOTS) {
   // Three-tier fallback: local sg -> npx --yes @ast-grep/cli -> rg. Each tier only fires if the
   // previous errored or returned empty. npx tier auto-fetches @ast-grep/cli on first use.
   if (config.domains.includes('a11y')) {
-    cmds.push({label: "ag-btn-no-aria-" + cmds.length,    command: "command -v sg >/dev/null 2>&1 && (sg run -p '<button $$ATTRS>$$$CHILDREN</button>' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (npx --yes @ast-grep/cli run -p '<button $$ATTRS>$$$CHILDREN</button>' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (rg -n '<button' \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || echo none"});
-    cmds.push({label: "ag-img-no-alt-" + cmds.length,     command: "command -v sg >/dev/null 2>&1 && (sg run -p '<img $$$ATTRS />' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (npx --yes @ast-grep/cli run -p '<img $$$ATTRS />' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (rg -n '<img' \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || echo none"});
+    if (PATTERNS['btn-no-aria'])   cmds.push({label: "ag-btn-no-aria-" + cmds.length,    command: "command -v sg >/dev/null 2>&1 && (sg run -p '" + PATTERNS['btn-no-aria'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (npx --yes @ast-grep/cli run -p '" + PATTERNS['btn-no-aria'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (rg -n '<button' \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || echo none"});
+    if (PATTERNS['img-no-alt'])    cmds.push({label: "ag-img-no-alt-" + cmds.length,     command: "command -v sg >/dev/null 2>&1 && (sg run -p '" + PATTERNS['img-no-alt'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (npx --yes @ast-grep/cli run -p '" + PATTERNS['img-no-alt'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (rg -n '<img' \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || echo none"});
     cmds.push({label: "ag-input-no-label-" + cmds.length, command: "(rg -n -e '<input' -e '<textarea' -e '<select' \"" + FILE + "\" 2>/dev/null | rg -v -e 'aria-label' -e '<label') || echo none"});
   }
 }
