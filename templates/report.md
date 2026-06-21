@@ -130,6 +130,22 @@ FULLY WORKED EXAMPLE — pattern-match against this. Do not copy the data; copy 
 
 **Total findings:** 9 · **Files scanned:** 318 · **Top hotspot:** `components/ProductDetails.tsx` (917 LOC)
 
+<!-- Single-domain variant — when only one domain is requested, drop the right-hand
+     "Domain | Count" column (it would be a single row repeating the requested domain).
+     Severity column stays. Header reads "Scope: <full|path|diff>" unchanged. Example
+     for a security-only run:
+
+| Severity      | Count |
+|---------------|-------|
+| Critical      | 2     |
+| High          | 2     |
+| Medium        | 0     |
+| Low           | 0     |
+| Informational | 0     |
+
+**Total findings:** 4 · **Files scanned:** 318 · **Top hotspot:** `components/ProductDetails.tsx` (917 LOC)
+-->
+
 ---
 
 ## Critical (2)
