@@ -10,8 +10,8 @@ Before working on codelens, ensure you have:
 |------|---------|
 | [Claude Code](https://claude.ai/code) | CLI, desktop app, or IDE extension |
 | [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) | `brew install ripgrep` or `apt install ripgrep` |
-| [Context7 MCP](https://github.com/nurmdrafi/codelens) | `/plugin install context7` |
-| [context-mode MCP](https://github.com/mksglu/context-mode) | `/plugin marketplace add mksglu/context-mode` then `/plugin install context-mode` |
+| [Context7 MCP](https://github.com/nurmdrafi/codelens) | Bundled in `plugin.json` mcpServers — auto-provisions on `/plugin install codelens` |
+| [context-mode MCP](https://github.com/mksglu/context-mode) | Bundled in `plugin.json` mcpServers — auto-provisions on `/plugin install codelens` |
 
 ## Quick Start
 
@@ -78,6 +78,59 @@ After discussion, the domain is implemented as:
 
 Users then invoke the new domain via `/codelens:review <yourdomain>` — no new skill file needed.
 
+## Adding Custom Checks
+
+For company-specific or project-specific checks that can be expressed as a shell command producing a pass/fail signal, use `config/custom-checks.json`. This is the **evidence-based** path — judgment-based checks ("this abstraction is wrong") belong in the agent's `<*-criteria>` blocks, not in config.
+
+Each entry has the shape:
+
+```json
+{
+  "id": "env-example-exists",
+  "domain": "security",
+  "severity": "High",
+  "title": ".env.example file must exist in project root",
+  "detect": "test -f .env.example || echo 'MISSING .env.example'",
+  "passSignal": "OK",
+  "description": "Ensures developers have a template for required environment variables."
+}
+```
+
+Field rules:
+- `id` — kebab-case, unique. Becomes the finding's rule identifier in the report.
+- `domain` — `security | architecture | quality | a11y`. Must match an active domain or the check is skipped.
+- `severity` — `Critical | High | Medium | Low | Informational`.
+- `detect` — shell command. Output is the evidence.
+- `passSignal` — string that, if present in output, means "passed." Default `"OK"`. If `detect` outputs nothing and no `passSignal` set, treated as pass.
+- `title`, `description` — human-readable, appear in the report.
+
+Workflow:
+1. Append your check to the `checks` array in `config/custom-checks.json`.
+2. Validate the file: `node scripts/validate-custom-checks.js`.
+3. Run `/codelens:doctor` to confirm check 18 (custom-checks.json valid) passes.
+4. Run `/codelens:review <domain>` on a test repo — the check fires when its `domain` is in the active set and the `detect` output doesn't match `passSignal`.
+
+**Trust assumption**: `detect` commands run as Bash in the user's own repo, at the same trust level as their own scripts. Don't accept `custom-checks.json` PRs from untrusted sources without reviewing the commands.
+
+## Adding Language Support
+
+Multi-language support is config-driven via `config/languages.json`. The `js-ts` entry is fully populated; `python` and `php` are placeholders (follow-up PRs populate them).
+
+To add or extend a language entry:
+
+1. Open `config/languages.json` and find (or add) the language block keyed by stack name (`js-ts`, `python`, `php`, `go`, `rust`, etc.).
+2. Populate or update:
+   - `extensions` — file extensions for that language.
+   - `manifestFiles` — files whose presence identifies the stack (used by Phase 1 stack detection and by `/codelens:doctor`).
+   - `lint`, `typecheck`, `deadCode` — each with `command`, `npxFallback`, `binaryCheck`, `notAvailableSignal`.
+   - `astGrepLang` — ast-grep `-l` flag value.
+   - `severityMappings` — tool rule codes → `(domain)-(severity)` strings.
+   - `phase3Patterns` — ast-grep pattern IDs → pattern strings.
+3. Run `/codelens:doctor` to confirm the new language is detected by its `manifestFiles`.
+4. Run `/codelens:review` on a repo with that stack — Phase 1 detects the language, Phase 1+2 builds commands from config (no hardcoded tool strings), Phase 3 uses the configured ast-grep lang/patterns.
+
+No agent edits are needed when populating a language — the agent reads `languages.json` at Phase 0.5 and drives all tool selection from it.
+
 ## Testing Locally
 
 There are two ways to test codelens against a real codebase. The `--plugin-dir` flag is the recommended primary method — it loads the plugin for one session with no install, no copy, and no marketplace state. The `cp -r` fallback is for older Claude Code versions that lack `--plugin-dir`.
@@ -111,7 +164,7 @@ claude --debug --plugin-dir /path/to/codelens
 
 Notes:
 - Plugin name comes from `.claude-plugin/plugin.json` → `name: "codelens"`. Rename the field and the `/codelens:...` prefix changes accordingly.
-- Skills are at `skills/<name>/SKILL.md`. Agents are auto-discovered from `agents/`. MCP servers from `.mcp.json` (codelens ships none — it relies on the user-installed context-mode and Context7 MCPs).
+- Skills are at `skills/<name>/SKILL.md`. Agents are auto-discovered from `agents/`. MCP servers are bundled in `.claude-plugin/plugin.json` `mcpServers` block — codelens ships `context-mode` and `context7`, both auto-provisioned on install.
 - The target repo's `.claude/settings.local.json` controls MCP tool permissions. codelens's Phase 0–3 phases call context-mode + Context7 MCPs, so those tools must be in the target's allowlist (or approved on first use).
 
 #### Headless smoke testing
@@ -160,7 +213,7 @@ Regardless of method, after `/codelens:review` completes check:
 - Is the severity correct?
 - Is the evidence accurate (file path, line number, code snippet)?
 - Does the fix suggestion make sense?
-- For the reviews log: did `.codelens/reviews.json` get one entry appended with the expected 6 fields (`timestamp`, `scope`, `summary`, `findings`, `reportPath`, `reviewerVersion`)?
+- For the reviews log: did `.codelens/reviews.log` get one entry appended with the expected 11 fields (`ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) plus required `schema: "1"`? Run `node scripts/validate-entry.js <entry.json>` to confirm contract compliance.
 
 ### Edge Cases to Test
 
@@ -216,7 +269,9 @@ config/
   exclusions.json              # Exclusion patterns (defaults + byDomain + keepInScope)
 templates/                       # Output contracts (agent-loaded at Phase 4)
   report.md                    # Markdown report template (placeholder skeleton)
-  reviews-entry.json           # Minimal 6-field entry shape for .codelens/reviews.json
+  reviews-entry.json           # Flat 11-field entry shape for .codelens/reviews.log (schema required, v1)
+  custom-checks.json          # (Part H) Evidence-based company-specific checks
+  languages.json              # (Part I) Multi-language mechanism: JS/TS populated, Python/PHP placeholders
   README.md                    # Abstraction rules + translation maps
 .claude-plugin/
   plugin.json                  # Plugin manifest
