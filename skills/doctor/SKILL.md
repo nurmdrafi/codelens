@@ -10,33 +10,32 @@ argument-hint: "(no arguments)"
 
 Run 14 checks in 3 batched groups (reduces LLM turns vs sequential). Print one line per check with status prefix, sorted by check number within each group. Halt on critical fails (1, 3, 4, 5, 6, 7, 8, 13, 14). Warn-only on optional-tool failures (2, 9, 10, 11, 12). **`[SKIP]`** is a fourth status: when the detected project stack doesn't match a tool's intended stack, the check prints `[SKIP] <tool> not applicable for <stack> projects` instead of running (or warning).
 
-## Stack detection (runs once, before Group 1)
+## Stack detection (config-driven, runs once before Group 1)
 
 Detect the project's primary stack so the optional-tool checks (9 biome, 10 fallow, 11 tsc, 12 ast-grep — all JS/TS-only) can be skipped on other stacks.
 
-Detection: probe for manifest files in the current working directory. First match wins, in this order:
-
-| Manifest file | `detectedStack` |
-|---|---|
-| `package.json` | `js-ts` |
-| `requirements.txt` or `pyproject.toml` | `python` |
-| `composer.json` | `php` |
-| `go.mod` | `go` |
-| `Cargo.toml` | `rust` |
-| (none of the above) | `unknown` |
-
-Implementation (one `ctx_execute` call):
+**Detection is config-driven via `config/languages.json`.** Load the file (one `ctx_execute` call), iterate its `languages` map, and the first entry whose `manifestFiles` array contains a file present in the current working directory wins. The entry's key becomes `detectedStack`. If no entry matches, `detectedStack = 'unknown'`.
 
 ```javascript
-ctx_execute({
-  language: "shell",
-  code: "for f in package.json requirements.txt pyproject.toml composer.json go.mod Cargo.toml; do if [ -f \"$f\" ]; then echo \"detectedStack=$(case $f in package.json) echo js-ts;; requirements.txt|pyproject.toml) echo python;; composer.json) echo php;; go.mod) echo go;; Cargo.toml) echo rust;; esac) manifest=$f\"; break; fi; done || echo 'detectedStack=unknown'"
-})
+// Pseudocode — issue as one ctx_execute({language:"javascript"}) call
+const fs = require('fs'), path = require('path');
+const langPath = path.join(process.env.CLAUDE_PROJECT_DIR || '.', 'config', 'languages.json');
+let detectedStack = 'unknown', matchedManifest = null;
+try {
+  const langs = JSON.parse(fs.readFileSync(langPath, 'utf8')).languages;
+  for (const [name, cfg] of Object.entries(langs)) {
+    if (Array.isArray(cfg.manifestFiles)) {
+      const found = cfg.manifestFiles.find(f => fs.existsSync(f));
+      if (found) { detectedStack = name; matchedManifest = found; break; }
+    }
+  }
+} catch (e) { /* languages.json missing or invalid — detectedStack stays 'unknown' */ }
+console.log(`detectedStack=${detectedStack} manifest=${matchedManifest || 'none'}`);
 ```
 
-Store the `detectedStack` value. **Gate checks 9/10/11/12**: if `detectedStack !== 'js-ts'`, print `[SKIP] <tool> not applicable for <detectedStack> projects` for each and skip the actual probe. Critical checks (1, 2, 3, 4, 5, 6, 7, 8, 13) always run regardless of stack.
+Store the `detectedStack` value. **Gate checks 9/10/11/12**: if `detectedStack !== 'js-ts'`, print `[SKIP] <tool> not applicable for <detectedStack> projects` for each and skip the actual probe. Critical checks (1, 2, 3, 4, 5, 6, 7, 8, 13, 14) always run regardless of stack.
 
-**Future (Part I, Step 23):** the manifest→stack mapping will be loaded from `config/languages.json` instead of hardcoded here, so adding a language entry automatically makes doctor recognize its manifest.
+**Adding a new language is now a config edit only:** add an entry to `config/languages.json` with its `manifestFiles`, and doctor automatically recognizes its manifest — no doctor skill edit needed.
 
 ## Check definitions (reference — same as before batching)
 
