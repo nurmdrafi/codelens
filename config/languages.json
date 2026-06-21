@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "languages": {
+    "js-ts": {
+      "extensions": ["js", "jsx", "ts", "tsx"],
+      "manifestFiles": ["package.json"],
+      "lint": {
+        "command": "biome lint <scopePath> --reporter=json",
+        "npxFallback": "npx --yes @biomejs/biome lint <scopePath> --reporter=json",
+        "binaryCheck": "command -v biome >/dev/null 2>&1",
+        "notAvailableSignal": "biome-not-available"
+      },
+      "typecheck": {
+        "command": "./node_modules/.bin/tsc -p . --noEmit --skipLibCheck --pretty false",
+        "npxFallback": "npx --yes --package=typescript tsc -p . --noEmit --skipLibCheck --pretty false",
+        "binaryCheck": "test -x ./node_modules/.bin/tsc",
+        "notAvailableSignal": "tsc-not-available"
+      },
+      "deadCode": {
+        "command": "fallow dead-code --format=json",
+        "npxFallback": "npx --yes fallow dead-code --format=json",
+        "binaryCheck": "command -v fallow >/dev/null 2>&1",
+        "notAvailableSignal": "fallow-not-available"
+      },
+      "health": {
+        "command": "fallow health --format=json",
+        "npxFallback": "npx --yes fallow health --format=json",
+        "binaryCheck": "command -v fallow >/dev/null 2>&1",
+        "notAvailableSignal": "fallow-not-available"
+      },
+      "dupes": {
+        "command": "fallow dupes --format=json",
+        "npxFallback": "npx --yes fallow dupes --format=json",
+        "binaryCheck": "command -v fallow >/dev/null 2>&1",
+        "notAvailableSignal": "fallow-not-available"
+      },
+      "astGrepLang": "tsx,jsx,ts,js",
+      "severityMappings": {
+        "lint/a11y/*": "a11y-High",
+        "lint/suspicious/*": "quality-High",
+        "lint/correctness/*": "quality-High",
+        "lint/complexity/*": "quality-Medium",
+        "lint/style/*": "quality-Low",
+        "TS2xxx": "quality-High",
+        "TS2531": "quality-High",
+        "TS2532": "quality-High",
+        "TS6133": "quality-Medium",
+        "TS2304": "quality-Medium",
+        "TS2307": "quality-Medium",
+        "fallow-circular-deps": "architecture-High",
+        "fallow-low-maintainability": "architecture-Medium",
+        "fallow-hotspot": "architecture-Medium",
+        "fallow-dead-code": "quality-Medium",
+        "fallow-dupes": "quality-Medium"
+      },
+      "phase3Patterns": {
+        "xss-innerhtml": "$$.innerHTML",
+        "xss-eval": "eval($$$ARGS)",
+        "empty-catch": "catch($E) {}",
+        "btn-no-aria": "<button $$ATTRS>$$$CHILDREN</button>",
+        "img-no-alt": "<img $$$ATTRS />"
+      }
+    },
+    "python": {
+      "_status": "placeholder — populate in follow-up PR. Mechanism ships in v0.0.10; actual ruff/mypy commands are config edits only (no agent changes needed).",
+      "extensions": ["py"],
+      "manifestFiles": ["requirements.txt", "pyproject.toml"],
+      "lint": { "_todo": "ruff check --output-format=json <scopePath>" },
+      "typecheck": { "_todo": "mypy --output=json <scopePath>" },
+      "deadCode": { "_todo": "vulture <scopePath>" },
+      "astGrepLang": "python",
+      "severityMappings": {},
+      "phase3Patterns": {}
+    },
+    "php": {
+      "_status": "placeholder — populate in follow-up PR for Laravel support.",
+      "extensions": ["php"],
+      "manifestFiles": ["composer.json"],
+      "lint": { "_todo": "php -l <scopePath> or artisan lint" },
+      "typecheck": { "_todo": "psalm or phpstan" },
+      "astGrepLang": "php",
+      "severityMappings": {},
+      "phase3Patterns": {}
+    },
+    "go": {
+      "_status": "placeholder — populate in follow-up PR.",
+      "extensions": ["go"],
+      "manifestFiles": ["go.mod"],
+      "lint": { "_todo": "golangci-lint run --out-format=json <scopePath>" },
+      "typecheck": { "_todo": "go vet" },
+      "astGrepLang": "go",
+      "severityMappings": {},
+      "phase3Patterns": {}
+    },
+    "rust": {
+      "_status": "placeholder — populate in follow-up PR.",
+      "extensions": ["rs"],
+      "manifestFiles": ["Cargo.toml"],
+      "lint": { "_todo": "cargo clippy --message-format=json" },
+      "typecheck": { "_todo": "cargo check --message-format=json" },
+      "astGrepLang": "rust",
+      "severityMappings": {},
+      "phase3Patterns": {}
+    }
+  }
+}
