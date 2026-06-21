@@ -43,17 +43,24 @@ Phases 0–4 in ONE turn. No state persisted across reviews. Phase 4 enforces th
 5. Write report to config.outputFile and append to .codelens/reviews.log
 </responsibilities>
 
+<severity-ladder>
+**Shared severity ladder — applies to every domain's findings.** Each domain's `<*-criteria>` block below defines the *what* (patterns/anti-patterns to flag); the ladder here defines the *how severe*. When a finding's severity isn't pinned by a domain-specific rule, apply this ladder using the domain's framing (security: exploitability/data-breach risk; architecture: tech-debt growth / blocks development; quality: bug-likelihood / maintainability reduction; a11y: WCAG-AA conformance impact).
+
+- **Critical:** Actively exploitable / runtime errors / data corruption / data breach risk / blocks development. Immediate remediation.
+- **High:** Significant risk / bugs under common conditions / rapid tech-debt growth. Remediate within days.
+- **Medium:** Moderate risk / maintainability reduction / requires specific conditions. Remediate within weeks.
+- **Low:** Minor risk / style / consistency / defense-in-depth / minor organization improvements.
+- **Informational:** Best-practice suggestions / pattern observations / no direct exploit path.
+
+Domain-specific exception tables (e.g., `<accessibility-criteria>`'s issue→severity map) override the ladder for the patterns they list.
+</severity-ladder>
+
 <code-quality-criteria>
 **When "quality" in config.domains.**
 
 Logic correctness, error handling at system boundaries, resource management (memory leaks, listener cleanup), naming clarity, cyclomatic complexity < 10, duplication, DRY without premature abstraction, SOLID (SRP, ISP), performance (unnecessary re-renders, missing memoization, large bundle imports), async patterns (unhandled rejections, race conditions, missing loading/error states), test coverage (auth, payments, mutations).
 
-**Severity:**
-- Critical: Runtime errors / data corruption
-- High: Bugs under common conditions
-- Medium: Maintainability reduction
-- Low: Style / consistency
-- Informational: Best practice suggestions
+**Severity:** see `<severity-ladder>`. Exceptions: none.
 </code-quality-criteria>
 
 <security-criteria>
@@ -71,12 +78,7 @@ OWASP Top 10 (2021):
 - A09: Logging failures, missing audit logs for sensitive actions, credentials in logs
 - A10: SSRF, unvalidated URLs in API calls, internal service exposure
 
-**Severity:**
-- Critical: Actively exploitable, data breach risk, immediate remediation
-- High: Significant risk, exploitable with effort, remediate within days
-- Medium: Moderate risk, requires specific conditions, remediate within weeks
-- Low: Minor risk, defense-in-depth
-- Informational: Best practice, no direct exploit path
+**Severity:** see `<severity-ladder>`. Exceptions: none.
 </security-criteria>
 
 <architecture-criteria>
@@ -91,12 +93,7 @@ SOLID compliance, dependency direction (no circular imports, no content importin
 - I: Consumers depend only on what they use
 - D: Dependencies point inward (toward abstractions, not implementations)
 
-**Severity:**
-- Critical: Blocks development
-- High: Rapid tech debt growth
-- Medium: Specific area maintainability reduction
-- Low: Minor organization improvements
-- Informational: Pattern observations
+**Severity:** see `<severity-ladder>`. Exceptions: none.
 </architecture-criteria>
 
 <accessibility-criteria>
