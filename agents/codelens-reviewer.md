@@ -173,13 +173,13 @@ ctx_batch_execute({
     // RISK SIGNALS for weighted hotspot selection (P2). r1-loc is the single LOC source.
     {label: "r1-loc",            command: "find <scopePath> -type f \\( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' \\) -exec wc -l {} + 2>/dev/null | rg -v ' total$'"},
     {label: "r2-finding-density",command: "rg --count -e 'eval\\(|innerHTML|catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}|console\\.log|TODO|FIXME' <scopePath> <EXCL> 2>/dev/null"},
-    {label: "r3-complexity",     command: "biome lint <scopePath> --reporter=json 2>/dev/null | rg -o '\"path\":\"[^\"]+\"' | sort | uniq -c | sort -rn | head -20 || echo 'biome-not-available'"},
+    {label: "r3-complexity",     command: "sh -c '( command -v biome >/dev/null 2>&1 && biome lint <scopePath> --reporter=json || npx --yes @biomejs/biome lint <scopePath> --reporter=json )' 2>/dev/null | rg -o '\"path\":\"[^\"]+\"' | sort | uniq -c | sort -rn | head -20 || echo 'biome-not-available'"},
     {label: "r4-centrality",     command: "rg --count '^import .* from' <scopePath> <EXCL> 2>/dev/null | sort -rn | head -20"},
     {label: "p2-sec-patterns", command: "rg --no-heading -n -e 'localStorage\\.(getItem|setItem)' -e 'dangerouslySetInnerHTML' -e 'eval\\(' -e 'innerHTML|outerHTML' -e 'Authorization.*Bearer' <scopePath> <EXCL> 2>/dev/null"},
     {label: "p2-sec-secrets", command: "rg -i --no-heading -n -e 'SECRET' -e 'PASSWORD' -e 'API_KEY' -e 'TOKEN' <scopePath> <EXCL> 2>/dev/null | rg -v 'process\\.env|\\.env|config' || true"},
     {label: "p2-quality", command: "rg --count -e 'console\\.log' -e 'TODO|FIXME|HACK|XXX' -e 'eslint-disable' -e 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}' <scopePath> <EXCL> 2>/dev/null"},
     {label: "p2-a11y", command: "rg --no-heading -n '<img' <scopePath> <EXCL> 2>/dev/null | rg -v 'alt='; rg --no-heading -n '<button' <scopePath> <EXCL> 2>/dev/null | rg -v 'aria-label'"},
-    {label: "p2-biome", command: "biome lint <scopePath> --reporter=summary 2>/dev/null | tail -10 || echo 'biome-not-available'"},
+    {label: "p2-biome", command: "sh -c '( command -v biome >/dev/null 2>&1 && biome lint <scopePath> --reporter=summary || npx --yes @biomejs/biome lint <scopePath> --reporter=summary )' 2>/dev/null | tail -10 || echo 'biome-not-available'"},
     {label: "p2-tsc", command: "sh -c '( test -x ./node_modules/.bin/tsc && ./node_modules/.bin/tsc -p . --noEmit --skipLibCheck --pretty false || npx --yes --package=typescript tsc -p . --noEmit --skipLibCheck --pretty false )' 2>/dev/null | head -c 4000 || echo 'tsc-not-available'"}
   ],
   concurrency: 8,
@@ -221,9 +221,9 @@ This ranked list is the input to Phase 3.
 ```javascript
 ctx_batch_execute({
   commands: [
-    {label: "p2-fallow-dead", command: "fallow dead-code --format=json 2>/dev/null || true"},
-    {label: "p2-fallow-health", command: "fallow health --format=json 2>/dev/null || true"},
-    {label: "p2-fallow-dupes", command: "fallow dupes --format=json 2>/dev/null || true"}
+    {label: "p2-fallow-dead", command: "sh -c '( command -v fallow >/dev/null 2>&1 && fallow dead-code --format=json || npx --yes fallow dead-code --format=json )' 2>/dev/null || echo 'fallow-not-available'"},
+    {label: "p2-fallow-health", command: "sh -c '( command -v fallow >/dev/null 2>&1 && fallow health --format=json || npx --yes fallow health --format=json )' 2>/dev/null || echo 'fallow-not-available'"},
+    {label: "p2-fallow-dupes", command: "sh -c '( command -v fallow >/dev/null 2>&1 && fallow dupes --format=json || npx --yes fallow dupes --format=json )' 2>/dev/null || echo 'fallow-not-available'"}
   ],
   concurrency: 3,
   queries: ["dead files unused exports", "circular dependencies", "complexity hotspots", "duplication clones"]
@@ -272,9 +272,11 @@ for (const FILE of HOTSPOTS) {
   // A11Y — JSX self-closing tags use `/>`. Note: ast-grep-first chains must use `command -v sg` check,
   // NOT `|| rg fallback`, because the pipeline `sg ... | rg -v ... | head` succeeds with empty output
   // when sg is missing — so the || branch never fires. Use `command -v sg` to explicitly route.
+  // Three-tier fallback: local sg -> npx --yes @ast-grep/cli -> rg. Each tier only fires if the
+  // previous errored or returned empty. npx tier auto-fetches @ast-grep/cli on first use.
   if (config.domains.includes('a11y')) {
-    cmds.push({label: "ag-btn-no-aria-" + cmds.length,    command: "command -v sg >/dev/null 2>&1 && (sg run -p '<button $$ATTRS>$$$CHILDREN</button>' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (rg -n '<button' \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || echo none"});
-    cmds.push({label: "ag-img-no-alt-" + cmds.length,     command: "command -v sg >/dev/null 2>&1 && (sg run -p '<img $$$ATTRS />' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (rg -n '<img' \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || echo none"});
+    cmds.push({label: "ag-btn-no-aria-" + cmds.length,    command: "command -v sg >/dev/null 2>&1 && (sg run -p '<button $$ATTRS>$$$CHILDREN</button>' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (npx --yes @ast-grep/cli run -p '<button $$ATTRS>$$$CHILDREN</button>' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (rg -n '<button' \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || echo none"});
+    cmds.push({label: "ag-img-no-alt-" + cmds.length,     command: "command -v sg >/dev/null 2>&1 && (sg run -p '<img $$$ATTRS />' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (npx --yes @ast-grep/cli run -p '<img $$$ATTRS />' -l tsx,jsx \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (rg -n '<img' \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || echo none"});
     cmds.push({label: "ag-input-no-label-" + cmds.length, command: "(rg -n -e '<input' -e '<textarea' -e '<select' \"" + FILE + "\" 2>/dev/null | rg -v -e 'aria-label' -e '<label') || echo none"});
   }
 }
