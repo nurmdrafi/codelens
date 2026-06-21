@@ -8,7 +8,7 @@ argument-hint: "(no arguments)"
 
 # Codelens Doctor
 
-Run 13 checks in 3 batched groups (reduces LLM turns vs sequential). Print one line per check with status prefix, sorted by check number within each group. Halt on critical fails (1, 3, 4, 5, 6, 7, 8, 13). Warn-only on optional-tool failures (2, 9, 10, 11, 12). **`[SKIP]`** is a fourth status: when the detected project stack doesn't match a tool's intended stack, the check prints `[SKIP] <tool> not applicable for <stack> projects` instead of running (or warning).
+Run 14 checks in 3 batched groups (reduces LLM turns vs sequential). Print one line per check with status prefix, sorted by check number within each group. Halt on critical fails (1, 3, 4, 5, 6, 7, 8, 13, 14). Warn-only on optional-tool failures (2, 9, 10, 11, 12). **`[SKIP]`** is a fourth status: when the detected project stack doesn't match a tool's intended stack, the check prints `[SKIP] <tool> not applicable for <stack> projects` instead of running (or warning).
 
 ## Stack detection (runs once, before Group 1)
 
@@ -66,6 +66,8 @@ Store the `detectedStack` value. **Gate checks 9/10/11/12**: if `detectedStack !
 
 13. **plugin.json valid + agent present.** Read `.claude-plugin/plugin.json`, parse as JSON; also read `agents/codelens-reviewer.md` (existence only). On success: `[OK] plugin manifest valid (name: <name>, version: <version>); agent file present`. On JSON fail: `[FAIL] plugin.json invalid. Reinstall: /plugin install codelens`. On agent missing: `[FAIL] agents/codelens-reviewer.md missing. Reinstall: /plugin install codelens`.
 
+14. **`config/custom-checks.json` valid (critical if present).** File is optional — missing file prints `[OK] no custom-checks.json (ok)`. If present, run `node "$CLAUDE_PROJECT_DIR/scripts/validate-custom-checks.js"`. On `OK` line: `[OK] custom-checks.json valid (<N> checks)`. On `FAIL: <reason>` line: `[FAIL] custom-checks.json invalid: <reason>`. Validates id kebab-case + unique, domain/severity/detect non-empty, severity/domain in allowed sets. Does NOT validate command safety — detect commands run as Bash at the user's trust level.
+
 ## Execution — 3 batched groups
 
 Run checks in three `ctx_batch_execute` calls instead of 13 sequential tool calls. Within each batch, results are indexed under the check's `label`; print them sorted by check number before moving to the next batch.
@@ -105,14 +107,15 @@ Map each result to its `[OK]`/`[WARN]`/`[FAIL]` line per the check definitions.
 
 ### Group 3 — Filesystem + special (sequential)
 
-These can't batch cleanly — check-11 has a two-tier binary-then-npx flow with a 30s timeout, and check-13 reads files. Run them sequentially.
+These can't batch cleanly — check-11 has a two-tier binary-then-npx flow with a 30s timeout, check-13 reads files, check-14 spawns node. Run them sequentially.
 
 - check-11 (tsc): `test -x ./node_modules/.bin/tsc && ./node_modules/.bin/tsc --version || npx --yes --package=typescript tsc --version` (30s timeout).
 - check-13 (plugin.json + agent): `ctx_execute({language:"javascript", code:"const fs=require('fs');try{const j=JSON.parse(fs.readFileSync(process.env.CLAUDE_PROJECT_DIR+'/.claude-plugin/plugin.json','utf8'));const a=fs.existsSync(process.env.CLAUDE_PROJECT_DIR+'/agents/codelens-reviewer.md');console.log('OK name='+j.name+' version='+j.version+' agent='+a);}catch(e){console.log('FAIL '+e.message);}"}`).
+- check-14 (custom-checks.json valid): `node "$CLAUDE_PROJECT_DIR/scripts/validate-custom-checks.js"` (5s timeout). Returns `OK` (valid), `OK no custom-checks.json` (file absent — fine), or `FAIL: <reason>` (invalid).
 
 ## Output
 
-After all 3 groups complete, print summary: `codelens setup: <stack=<detectedStack>> <N> OK, <M> WARN, <K> FAIL, <S> SKIP of 13 checks`. If any FAIL on critical checks (1, 3, 4, 5, 6, 7, 8, 13), exit with guidance: `Critical checks failed — fix before running /codelens:review.` SKIP count > 0 is informational (not a failure) — it means the detected stack doesn't use those tools.
+After all 3 groups complete, print summary: `codelens setup: <stack=<detectedStack>> <N> OK, <M> WARN, <K> FAIL, <S> SKIP of 14 checks`. If any FAIL on critical checks (1, 3, 4, 5, 6, 7, 8, 13, 14), exit with guidance: `Critical checks failed — fix before running /codelens:review.` SKIP count > 0 is informational (not a failure) — it means the detected stack doesn't use those tools.
 
 ## See Also
 
