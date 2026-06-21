@@ -32,7 +32,7 @@ Config from dispatching skill:
 {"domains": ["security", "architecture", "quality", "a11y"], "scope": "full" | "path" | "diff", "scopeTarget": "" | "<path>" | "<base>..<head>", "outputFile": "CODEBASE_ANALYSIS_REPORT.md"}
 ```
 
-Phases 0–4 in ONE turn. No persisted state. No status JSON. No phase gates.
+Phases 0–4 in ONE turn. No state persisted across reviews. Phase 4 enforces three structural gates with `STATUS:` markers (`gates-loaded`, `report-ok`, `entry-ok`) — output drift fails loud, not silent. The agent must print all three markers in strict order before appending to `.codelens/reviews.log`; any missing or out-of-order marker halts the review with `STATUS: partial`.
 </role>
 
 <responsibilities>
