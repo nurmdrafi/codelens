@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "checks": [
+    {
+      "id": "env-example-exists",
+      "domain": "security",
+      "severity": "High",
+      "title": ".env.example file must exist in project root",
+      "detect": "test -f .env.example && echo 'OK env.example present' || echo 'MISSING .env.example'",
+      "passSignal": "OK",
+      "description": "Ensures developers have a template for required environment variables. Without .env.example, new contributors guess at required env vars or copy real secrets into their local config."
+    },
+    {
+      "id": "readme-exists",
+      "domain": "quality",
+      "severity": "Low",
+      "title": "README.md must exist in project root",
+      "detect": "test -f README.md && echo 'OK README.md present' || echo 'MISSING README.md'",
+      "passSignal": "OK",
+      "description": "Project-level onboarding hygiene. A missing README is a low-severity quality finding — not breaking, but a clear maintainability gap for new contributors."
+    }
+  ]
+}

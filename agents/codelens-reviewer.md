@@ -136,6 +136,18 @@ ctx_stats()
 
 If fails: halt with install hint. If errors during Phase 1-2: rg missing → brew install ripgrep; context-mode MCP → /plugin marketplace add mksglu/context-mode; Context7 MCP → /plugin marketplace add upstash/context7.
 
+## Phase 0.5: Load custom checks config (optional)
+
+Load `config/custom-checks.json` (evidence-based company-specific checks). File is optional — missing or empty file means zero custom checks, which is fine.
+
+Issue this `ctx_execute` call verbatim:
+
+```json
+{ "language": "javascript", "code": "const fs=require('fs');const path=require('path');const p=path.join(process.env.CLAUDE_PROJECT_DIR||'.','config','custom-checks.json');try{const c=JSON.parse(fs.readFileSync(p,'utf8'));console.log('LOADED custom-checks.json count='+c.checks.length);}catch(e){console.log('NO custom-checks.json (ok)');}" }
+```
+
+After the call returns, store the loaded checks array for Phase 1+2 batch injection (Phase 1+2 step below) and Phase 4 finding emit. If the loader printed `NO custom-checks.json`, treat the array as empty.
+
 ## Phase 1+2: Inventory + Patterns (ONE ctx_batch_execute)
 
 ### Scope resolution (REQUIRED — runs before any Phase 1+2 command)
@@ -183,6 +195,8 @@ ctx_batch_execute({
   queries: ["file count", "tech stack dependencies", "security findings", "quality issues", "a11y violations", "biome summary", "TS2 type errors", "TS6133 unused", "TS2531 null deref", "TS2304 cannot find name", "TS2307 cannot find module", "loc per file r1", "finding density r2", "complexity hotspots r3", "import centrality r4"]
 })
 ```
+
+**Custom-checks injection:** For each check loaded at Phase 0.5 whose `domain` ∈ `config.domains`, append `{label: "custom-<id>", command: "<detect>"}` to the `commands` array above before issuing the batch call. Also append `"custom-<id>"` to the `queries` array so the result is retrievable. Skip checks whose `domain` is not in the active set (e.g., a `quality` check when the user requested only `security`). If Phase 0.5 reported zero custom checks, this is a no-op.
 
 **Weighted hotspot selection (P2):** After the batch returns, compute per-file risk score from `r1-loc`, `r2-finding-density`, `r3-complexity`, `r4-centrality`. Use ONE `ctx_execute` call. Parsing rules per signal (output formats are deterministic):
 
@@ -373,6 +387,21 @@ STATUS: gates-loaded
 Do not print `STATUS: gates-loaded` until you have seen all three `LOADED` lines. If any call errors or returns empty, print `STATUS: partial reason=G1 <which call failed>` and halt — do NOT proceed to Step 2.
 
 The report template defines the EXACT report structure (fully-worked example embedded). The entry schema's `required` array (which Call 2 prints) is the authoritative list of allowed fields — `additionalProperties: false`. The README defines abstraction rules and translation maps.
+
+### Step 1.5 — Collect custom-check findings (if any custom checks ran)
+
+For each custom check loaded at Phase 0.5 (whose `domain` ∈ `config.domains` — it was injected into the Phase 1+2 batch), retrieve its output via `ctx_search(queries:["custom-<id>"])`. Apply the pass/fail rule:
+
+- If `passSignal` is set: output **contains** `passSignal` → check passed; otherwise → finding.
+- If `passSignal` is unset: output is non-empty → passed; empty → finding.
+- If the label is missing from the index (command never ran, e.g., scope mismatch) → skip silently.
+
+For each finding, materialize a finding record:
+```json
+{"rule":"<id>","title":"<title>","description":"<description>","severity":"<severity>","domain":"<domain>","evidence":"<full detect output>"}
+```
+
+Fold these findings into the severity sections built in Step 2. They follow the same severity-first ordering and cross-domain dedup rules as the rest of the report. Their `domain` is the configured `domain` (security/architecture/quality/a11y); their `severity` is the configured `severity`. They use the abstract rule name (`id`) and configured title — NOT tool names.
 
 ### Step 2 — Build the markdown report
 
