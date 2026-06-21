@@ -8,7 +8,35 @@ argument-hint: "(no arguments)"
 
 # Codelens Doctor
 
-Run 13 checks in 3 batched groups (reduces LLM turns vs sequential). Print one line per check with status prefix, sorted by check number within each group. Halt on critical fails (1, 3, 4, 5, 6, 7, 8, 13). Warn-only on optional-tool failures (2, 9, 10, 11, 12).
+Run 13 checks in 3 batched groups (reduces LLM turns vs sequential). Print one line per check with status prefix, sorted by check number within each group. Halt on critical fails (1, 3, 4, 5, 6, 7, 8, 13). Warn-only on optional-tool failures (2, 9, 10, 11, 12). **`[SKIP]`** is a fourth status: when the detected project stack doesn't match a tool's intended stack, the check prints `[SKIP] <tool> not applicable for <stack> projects` instead of running (or warning).
+
+## Stack detection (runs once, before Group 1)
+
+Detect the project's primary stack so the optional-tool checks (9 biome, 10 fallow, 11 tsc, 12 ast-grep — all JS/TS-only) can be skipped on other stacks.
+
+Detection: probe for manifest files in the current working directory. First match wins, in this order:
+
+| Manifest file | `detectedStack` |
+|---|---|
+| `package.json` | `js-ts` |
+| `requirements.txt` or `pyproject.toml` | `python` |
+| `composer.json` | `php` |
+| `go.mod` | `go` |
+| `Cargo.toml` | `rust` |
+| (none of the above) | `unknown` |
+
+Implementation (one `ctx_execute` call):
+
+```javascript
+ctx_execute({
+  language: "shell",
+  code: "for f in package.json requirements.txt pyproject.toml composer.json go.mod Cargo.toml; do if [ -f \"$f\" ]; then echo \"detectedStack=$(case $f in package.json) echo js-ts;; requirements.txt|pyproject.toml) echo python;; composer.json) echo php;; go.mod) echo go;; Cargo.toml) echo rust;; esac) manifest=$f\"; break; fi; done || echo 'detectedStack=unknown'"
+})
+```
+
+Store the `detectedStack` value. **Gate checks 9/10/11/12**: if `detectedStack !== 'js-ts'`, print `[SKIP] <tool> not applicable for <detectedStack> projects` for each and skip the actual probe. Critical checks (1, 2, 3, 4, 5, 6, 7, 8, 13) always run regardless of stack.
+
+**Future (Part I, Step 23):** the manifest→stack mapping will be loaded from `config/languages.json` instead of hardcoded here, so adding a language entry automatically makes doctor recognize its manifest.
 
 ## Check definitions (reference — same as before batching)
 
@@ -28,13 +56,13 @@ Run 13 checks in 3 batched groups (reduces LLM turns vs sequential). Print one l
 
 8. **`git` installed.** Run `git --version`. On success: `[OK] git <version>`. On fail: `[FAIL] git not installed. Install: brew install git (macOS) or sudo apt-get install git (Ubuntu/Debian).`
 
-9. **`biome` available (optional, auto-fetched via npx).** Run `command -v biome >/dev/null 2>&1 && biome --version || npx --yes @biomejs/biome --version` with 30s timeout (first npx fetch is slow). On success: `[OK] biome <version>`. On fail: `[WARN] biome not available (optional — JS/TS lint/a11y/correctness findings disabled, or set npm config to allow npx auto-fetch).`
+9. **`biome` available (optional, auto-fetched via npx).** If `detectedStack !== 'js-ts'`: `[SKIP] biome not applicable for <stack> projects`. Otherwise run `command -v biome >/dev/null 2>&1 && biome --version || npx --yes @biomejs/biome --version` with 30s timeout (first npx fetch is slow). On success: `[OK] biome <version>`. On fail: `[WARN] biome not available (optional — JS/TS lint/a11y/correctness findings disabled, or set npm config to allow npx auto-fetch).`
 
-10. **`fallow` available (optional, auto-fetched via npx).** Run `command -v fallow >/dev/null 2>&1 && fallow --version || npx --yes fallow --version` with 30s timeout. On fail-pattern: `[WARN] fallow not available (optional — dead-code/dupes/circular-deps disabled).` On success: `[OK] fallow <version>`.
+10. **`fallow` available (optional, auto-fetched via npx).** If `detectedStack !== 'js-ts'`: `[SKIP] fallow not applicable for <stack> projects`. Otherwise run `command -v fallow >/dev/null 2>&1 && fallow --version || npx --yes fallow --version` with 30s timeout. On fail-pattern: `[WARN] fallow not available (optional — dead-code/dupes/circular-deps disabled).` On success: `[OK] fallow <version>`.
 
-11. **`tsc` available (optional, auto-fetched via npx).** Try `./node_modules/.bin/tsc --version` first (project-local). If missing, try `npx --yes --package=typescript tsc --version` with 30s timeout (downloads typescript if needed). Phase 2 invocation uses `-p .` to pick up the project's tsconfig. On success: `[OK] tsc <version>`. On fail/timeout: `[WARN] tsc not available (optional — TypeScript semantic analysis disabled).`
+11. **`tsc` available (optional, auto-fetched via npx).** If `detectedStack !== 'js-ts'`: `[SKIP] tsc not applicable for <stack> projects`. Otherwise try `./node_modules/.bin/tsc --version` first (project-local). If missing, try `npx --yes --package=typescript tsc --version` with 30s timeout (downloads typescript if needed). Phase 2 invocation uses `-p .` to pick up the project's tsconfig. On success: `[OK] tsc <version>`. On fail/timeout: `[WARN] tsc not available (optional — TypeScript semantic analysis disabled).`
 
-12. **`ast-grep` available (optional, auto-fetched via npx).** Run `command -v sg >/dev/null 2>&1 && sg --version || npx --yes @ast-grep/cli --version` with 30s timeout. On success: `[OK] ast-grep <version>`. On fail: `[WARN] ast-grep not available (optional — AST-based findings fall back to rg).`
+12. **`ast-grep` available (optional, auto-fetched via npx).** If `detectedStack !== 'js-ts'`: `[SKIP] ast-grep not applicable for <stack> projects`. Otherwise run `command -v sg >/dev/null 2>&1 && sg --version || npx --yes @ast-grep/cli --version` with 30s timeout. On success: `[OK] ast-grep <version>`. On fail: `[WARN] ast-grep not available (optional — AST-based findings fall back to rg).`
 
 13. **plugin.json valid + agent present.** Read `.claude-plugin/plugin.json`, parse as JSON; also read `agents/codelens-reviewer.md` (existence only). On success: `[OK] plugin manifest valid (name: <name>, version: <version>); agent file present`. On JSON fail: `[FAIL] plugin.json invalid. Reinstall: /plugin install codelens`. On agent missing: `[FAIL] agents/codelens-reviewer.md missing. Reinstall: /plugin install codelens`.
 
@@ -84,7 +112,7 @@ These can't batch cleanly — check-11 has a two-tier binary-then-npx flow with 
 
 ## Output
 
-After all 3 groups complete, print summary: `codelens setup: <N> OK, <M> WARN, <K> FAIL of 13 checks`. If any FAIL on critical checks (1, 3, 4, 5, 6, 7, 8, 13), exit with guidance: `Critical checks failed — fix before running /codelens:review.`
+After all 3 groups complete, print summary: `codelens setup: <stack=<detectedStack>> <N> OK, <M> WARN, <K> FAIL, <S> SKIP of 13 checks`. If any FAIL on critical checks (1, 3, 4, 5, 6, 7, 8, 13), exit with guidance: `Critical checks failed — fix before running /codelens:review.` SKIP count > 0 is informational (not a failure) — it means the detected stack doesn't use those tools.
 
 ## See Also
 
