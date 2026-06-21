@@ -3,7 +3,7 @@
 Output contracts the agent fills in at Phase 4. Both shapes live in this folder:
 
 - **[`report.md`](./report.md)** — Markdown report template (placeholder skeleton with a fully-worked example embedded). The agent consults this at Phase 4 via `ctx_execute_file`.
-- **[`reviews-entry.json`](./reviews-entry.json)** — Minimal 6-field shape appended to `.codelens/reviews.json` per review. One object per completed review.
+- **[`reviews-entry.json`](./reviews-entry.json)** — Flat 11-field entry appended to `.codelens/reviews.log` per review. One object per completed review. `schema` field is **required** — current shape is schema v1.
 
 The rules and translation maps below apply to **both** outputs.
 
@@ -21,24 +21,31 @@ These rules are mandatory; deviations are bugs.
    - `lint/suspicious/noArrayIndexKey` → `suspicious/arrayIndexKey`
    - `TS2322`, `TS6133`, etc. → `typeError/typeMismatch`, `typeError/unusedLocal` (preserve semantic)
 5. **Generic command form.** Use `/review ...` not `/codelens:review ...`. Use `/doctor` not `/codelens:doctor`.
-6. **Self-version only.** `reviewerVersion` is the agent's own semver (e.g. `0.0.8`). Never emit third-party tool versions.
+6. **Self-version only.** `v` is the agent's own semver (e.g. `0.0.10`). Never emit third-party tool versions.
 
 ## Agent integration
 
+Phase 4 is gated by three `STATUS:` markers. The agent does not write any file until Gate G1 prints `STATUS: gates-loaded`, and does not append to `reviews.log` until G2 prints `STATUS: report-ok` AND G3 prints `STATUS: entry-ok`.
+
 ```
 Phase 4 → "Compile Report"
-  ├── Read templates/reviews-entry.json (6-field entry shape)
-  ├── Read templates/report.md (template + fully-worked example)
-  ├── Build markdown report following the template
-  ├── Build reviews.json entry conforming to the 6-field shape
-  └── Append entry to .codelens/reviews.json
+  ├── Step 1 — Gate G1: 3× ctx_execute fs.readFileSync → templates/report.md, reviews-entry.json, README.md
+  │                → prints STATUS: gates-loaded
+  ├── Step 2-3 — Build markdown report from template
+  ├── Step 4 — Gate G2: bash scripts/validate-report.sh <file>
+  │                → prints STATUS: report-ok
+  ├── Step 5 — Build reviews.log entry conforming to the 11-field shape (+ required schema)
+  ├── Step 6 — Gate G3: node scripts/validate-entry.js (enforces additionalProperties:false)
+  │                → prints STATUS: entry-ok
+  └── Step 7 — Append entry to .codelens/reviews.log (only after all 3 markers seen)
+                 → prints STATUS: complete
 ```
 
-All 6 entry fields (`timestamp`, `scope`, `summary`, `findings`, `reportPath`, `reviewerVersion`) are always populatable from the review's runtime state. No fallback-to-zero / unknown handling needed.
+All 11 entry fields (`ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`, plus required `schema`) are always populatable from the review's runtime state. No fallback-to-zero / unknown handling needed.
 
 ## Pattern name translation map (Phase 3 → report)
 
-> These names appear in the **markdown report**'s Standard column and finding titles. The minimal reviews.json log no longer carries them as structured fields — they live in the report only.
+> These names appear in the **markdown report**'s Standard column and finding titles. The flat reviews.log no longer carries them as structured fields — they live in the report only.
 
 | Phase 3 internal label | Report pattern name |
 |---|---|
@@ -51,7 +58,7 @@ All 6 entry fields (`timestamp`, `scope`, `summary`, `findings`, `reportPath`, `
 
 ## Static analyzer category translation map
 
-> These names appear in the **markdown report**'s Standard column. The minimal reviews.json log no longer carries them as structured fields — they live in the report only.
+> These names appear in the **markdown report**'s Standard column. The flat reviews.log no longer carries them as structured fields — they live in the report only.
 
 | Source rule (tool) | Report category name |
 |---|---|
