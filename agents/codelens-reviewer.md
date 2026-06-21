@@ -495,7 +495,7 @@ You MUST NOT proceed to Step 5 unless you have printed `STATUS: report-ok`.
 Emit one JSON object with exactly these 12 fields (no others). Short keys keep each entry on a single line. `schema` is required — current value is `"1"`.
 
 ```json
-{"schema":"1","ts":"<ISO 8601 UTC>","scope":"full | path:<target> | diff:<target>","crit":<int>,"high":<int>,"med":<int>,"low":<int>,"info":<int>,"report":"<relative path to report>","v":"<X.Y.Z>","tokIn":<int>,"tokOut":<int>}
+{"schema":"1","ts":"<ISO 8601 UTC>","scope":"full | path:<target> | diff:<target>","crit":<int>,"high":<int>,"med":<int>,"low":<int>,"info":<int>,"report":"<relative path to report>","v":"0.0.10","tokIn":<int>,"tokOut":<int>}
 ```
 
 Field meanings:

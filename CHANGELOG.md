@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.10] - 2026-06-21
+
+v0.0.10 is the extensibility + self-contained release. Beta — no backward compatibility. The reviews.log shape is the canonical form; schema v1.
+
+### Added
+
+- `config/custom-checks.json` — evidence-based company-specific checks. Ships 2 examples (env-example-exists, readme-exists). Each check has id/domain/severity/detect/passSignal/title/description; the agent runs them at Phase 1+2 and emits findings at Phase 4 Step 1.5.
+- `scripts/validate-custom-checks.js` — schema validator for custom-checks.json. Enforces id kebab-case + unique, domain/severity in allowed sets, detect non-empty. Run from doctor's check 14.
+- `config/languages.json` — multi-language mechanism. js-ts fully populated (faithful transcription of all current agent severity mappings); python/php/go/rust placeholders for follow-up PRs. Adding a language is now a config edit only.
+- `mcpServers` block in `plugin.json` — context-mode + context7 auto-provision on `/plugin install codelens`. No separate MCP plugin installs needed.
+- `permissions.allow` block in `plugin.json` — 27 rules eliminating per-review Bash permission prompts.
+- Stack-aware doctor — detects js-ts/python/php/go/rust via `config/languages.json`, `[SKIP]`s biome/tsc/fallow/ast-grep checks when the stack doesn't match. `[SKIP]` is a fourth doctor status (alongside OK/WARN/FAIL).
+- Doctor check 14 (custom-checks.json valid) — critical if file is present and invalid.
+- `schema` field on reviews.log entries — **required**, current `"1"`. Numeric-string bump policy.
+- Single-domain Scorecard worked example in `templates/report.md` (drops the Domain column when only one domain is requested).
+- Phase 4 Step 8 — diff-scope temp-file cleanup.
+- Phase 4 Step 1.5 — collect custom-check findings before building the report.
+- `docs/superpowers/benchmarks/2026-06-19-v0.0.10-token-reduction.md` — Part E benchmark tracking with honest accounting of the missed 25% gate.
+
+### Changed
+
+- npm CLIs (biome/fallow/ast-grep) auto-fetched via `npx` with `command -v <binary>` fast-path. Only rg remains user-installed (native binary, can't bundle).
+- Agent prompt restructured around a shared `<severity-ladder>` block (single source of truth for severity assignments; per-domain criteria reference it). Phase 2.5 triggers enumerated concretely with WebSearch caps (5 libraries × 2 queries). Phase 3 two-batch queries are deterministic (no `...` ellipsis).
+- Phase 4 inline restatements of `<constraints>` replaced with `*Per <constraints>:*` pointers.
+- Doctor's 14 checks batched into 3 groups (CLI existence concurrency 5, MCP probes concurrency 3, filesystem+tsc sequential) for fewer LLM turns.
+- Agent Phase 0.5 loads both `custom-checks.json` and `languages.json`; Phase 1 stack detection is config-driven; Phase 1+2 batch, Phase 3 ast-grep, and Phase 4 severity mappings all built from `primaryLang`'s config entry.
+- Diff-scope `scopePath` mechanism rewritten — file list materialized once to a PID-suffixed temp file, consumed via `rg --files-from` / `xargs`, cleaned up in Phase 4 Step 8. Fixes the multi-line word-splitting bug.
+
+### Fixed
+
+- Doc drift: 6-field/reviews.json → 11-field/reviews.log everywhere (templates/README.md, CLAUDE.md, README.md, CONTRIBUTING.md, skills/review/SKILL.md). Plus the new schema-required field documented consistently.
+- "No phase gates" claim in agent `<role>` block → accurate description of three Phase 4 STATUS gates.
+- Stale v0.0.1 banner → v0.0.10 beta framing.
+- `templates/report.md` no longer hardcodes the plugin name (was violating its own abstraction rule #2). Same fix applied to one residual codelens self-reference in the agent body's Step 2 example.
+- Diff-scope word-splitting: `scopePath = git diff --name-only` broke every command substituting it as a single path arg. Fixed via the temp-file mechanism.
+
+### Notes
+
+- **Token-reduction gate adjusted.** The original ≥25% reduction target (final ≤22,180 bytes) was not achievable through E1–E4 as prescribed. The agent ended at 41,277 bytes — larger than v0.0.9 (29,574) because Parts B+C added load-bearing functionality (diff temp-file, npx wrappers) and Part I added config-driven indirection (~84 lines). New gate: "no accidental bloat" + clarity invariants (single severity-ladder source, enumerated Phase 2.5 triggers, deterministic Phase 3 queries) + unchanged severity-drift gate. See `docs/superpowers/benchmarks/2026-06-19-v0.0.10-token-reduction.md` for full accounting.
+- **End-to-end smoke test (security + a11y severity regression check, clean-install /plugin install) deferred.** Requires an interactive Claude Code session. Flagged for follow-up before tagging the GitHub release.
+
 ## [0.0.9] - 2026-06-19
 
 Schema-driven output contracts + deterministic validation gates + Phase 4 gate-hardening. This release absorbs the previously-unreleased v0.0.8 work (output contracts, validators, directory reorg) and the v0.0.9 gate-hardening that makes those gates actually fire.
