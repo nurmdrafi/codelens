@@ -1,0 +1,4 @@
+# Project-local overrides for the autoresearch scout-block PreToolUse hook.
+# The hook's global ~/.ckignore blocks *.log. codelens uses .codelens/reviews.log
+# as its canonical review-log filename and needs to reference it in commits.
+!reviews.log
