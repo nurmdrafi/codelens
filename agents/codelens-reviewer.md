@@ -233,14 +233,23 @@ ctx_batch_execute({
 
 ## Phase 2.5: Doc & Security Verification (on-flag)
 
-**Trigger:** Phase 2 flagged deprecated APIs, suspect deps, crypto/auth patterns, OR outdated dependency versions.
+**Triggers (concrete — fire Phase 2.5 only if any of these signals appeared in Phase 2 output):**
+- `p2-sec-patterns` matched `eval(`, `innerHTML`/`outerHTML`, or `dangerouslySetInnerHTML` in a file whose imports include a known framework library.
+- `p2-sec-secrets` returned matches after the `process.env|\.env|config` filter (i.e., likely-hardcoded secrets, not env-var references).
+- `p2-tsc` emitted `TS2307` (cannot find module) for any import — signals missing/uninstalled dependency that may have CVE implications.
+- `p1-stack` showed a dependencies block with at least one entry whose version range has a known major-version drift from latest (heuristic: `^N.` where N differs from the latest major by ≥1).
 
-For each flagged library:
-1. resolve-library-id with libraryName and query
-2. query-docs with resolved libraryId and suspect pattern query
-3. WebSearch with "{library_name} CVE 2026" and "{library_name} security advisory"
+**Hard caps (budget enforcement):**
+- At most **5 libraries** per review, prioritized by trigger severity (eval/innerHTML/secrets > TS2307 > version drift).
+- At most **2 WebSearch queries per library** (typically `"<library> CVE 2026"` + `"<library> security advisory"`).
+- Skip the remaining triggers once both caps are hit; note the skip count in the report's Methodology section.
 
-Augment Phase 2 findings with doc-verified evidence. If no flags: SKIP entirely.
+For each flagged library (up to the cap):
+1. `resolve-library-id` with `libraryName` and the suspect pattern as `query`.
+2. `query-docs` with the resolved `libraryId` and the suspect pattern query.
+3. WebSearch with `"<library_name> CVE 2026"` and `"<library_name> security advisory"`.
+
+Augment Phase 2 findings with doc-verified evidence. If no triggers fire: SKIP Phase 2.5 entirely.
 
 ## Phase 3: Hotspot Deep-Dive (tool-driven, single batched call)
 
