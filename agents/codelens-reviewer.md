@@ -301,8 +301,14 @@ if (cmds.length <= BATCH_SIZE) {
   });
 } else {
   // Two sequential batches. Findings from both indexed into the same knowledge base.
-  ctx_batch_execute({commands: cmds.slice(0, BATCH_SIZE), concurrency: 8, queries: [...]});
-  ctx_batch_execute({commands: cmds.slice(BATCH_SIZE), concurrency: 8, queries: [...]});
+  // Deterministic queries: static signal names + HOTSPOTS slices so each batch's
+  // evidence-retrieval queries match the files it actually processed.
+  const staticQ = ["xss innerHTML findings", "eval usage", "empty catch",
+                   "missing aria-label buttons", "missing alt images", "missing input labels"];
+  ctx_batch_execute({commands: cmds.slice(0, BATCH_SIZE), concurrency: 8,
+                     queries: [...staticQ, ...HOTSPOTS.slice(0, 3)]});
+  ctx_batch_execute({commands: cmds.slice(BATCH_SIZE), concurrency: 8,
+                     queries: [...staticQ, ...HOTSPOTS.slice(3, 6)]});
 }
 ```
 
