@@ -4,7 +4,7 @@
 
 codelens is a Claude Code plugin for multi-domain code review. It scans codebases across four domains — security, architecture, code quality, accessibility — and produces a severity-first Markdown report.
 
-Current version: **0.0.7 (beta)**. Architecture: single agent + 2 thin skill dispatchers (`/codelens:review`, `/codelens:doctor`).
+Current version: **0.0.10 (beta — no backward compatibility)**. Architecture: single agent + 2 thin skill dispatchers (`/codelens:review`, `/codelens:doctor`).
 
 ## Tech Stack
 
@@ -16,16 +16,18 @@ Markdown only — skills, agents, configs. No build step, no runtime dependencie
 /codelens:review (NL-driven dispatcher, ~2.5KB)
   → reads $ARGUMENTS, infers {domains, scope, scopeTarget, outputFile}
   → AskUserQuestion fallback when bare/ambiguous
-  → codelens-reviewer agent (single invocation, ~310 lines):
+  → codelens-reviewer agent (single invocation, ~450 lines):
       Phase 0: Dependency preflight (ctx_stats only — fail-fast on missing MCP)
+      Phase 0.5: Load config/custom-checks.json + config/languages.json (skip silently if absent)
       Phase 1+2: Inventory + Patterns + Risk Signals (ONE ctx_batch_execute, concurrency=8)
                 → weighted hotspot selection via one ctx_execute post-processor (Risk Score)
       Phase 2.5: Doc/CVE verify (on-flag only, Context7 + WebSearch)
       Phase 3: Hotspots (ctx_batch_execute per file × 10–15, ast-grep + rg fallback, tool-driven)
-      Phase 4: Compile (Write report + append to .codelens/reviews.json)
+      Phase 4: Compile — three STATUS gates (gates-loaded, report-ok, entry-ok) then
+                Write report + append one 11-field entry to .codelens/reviews.log
 ```
 
-The agent is **stateless**: no persisted intermediate JSON, no checkpoints, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body.
+The agent is **stateless across reviews**: no persisted intermediate JSON, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body. **Phase 4 is the exception** — three `STATUS:` markers (`gates-loaded`, `report-ok`, `entry-ok`) must print in strict order before the entry is appended. Output drift fails loud, not silent.
 
 **v0.0.5 optimization:** Phase 1 + Phase 2 merged into a single `ctx_batch_execute` call (1 LLM turn vs ~8 in v0.0.4). Phase 0 reduced to one `ctx_stats` call. Token budget: ~8.5K per review vs ~14K in v0.0.4 (~40% reduction).
 
@@ -39,11 +41,11 @@ The agent is **stateless**: no persisted intermediate JSON, no checkpoints, no `
 
 | Dependency | Used By | Purpose |
 |---|---|---|
-| `rg` (ripgrep) | agent Phases 1–3 | Primary search tool, rg fallback in Phase 3 |
-| context-mode MCP | agent all phases | `ctx_batch_execute`, `ctx_execute`, `ctx_execute_file`, `ctx_search`, `ctx_stats` |
-| Context7 MCP | agent Phase 2.5 | `resolve-library-id`, `query-docs` for doc/CVE verification |
+| `rg` (ripgrep) | agent Phases 1–3 | Primary search tool, rg fallback in Phase 3. **User-installed** — native binary, not bundled. |
+| context-mode MCP | agent all phases | `ctx_batch_execute`, `ctx_execute`, `ctx_execute_file`, `ctx_search`, `ctx_stats`. **Bundled** via `plugin.json` mcpServers — auto-provisions on `/plugin install codelens`. |
+| Context7 MCP | agent Phase 2.5 | `resolve-library-id`, `query-docs` for doc/CVE verification. **Bundled** via `plugin.json` mcpServers. |
 
-Optional: `biome` (lint/a11y/complexity), `fallow` (dead-code/dupes/circular-deps), `tsc` (TS semantic), `ast-grep` (AST-based Phase 3 findings), WebSearch (built-in, CVE lookups in Phase 2.5). Missing optional tools fall back to rg with no crash.
+Optional: `biome` (lint/a11y/complexity), `fallow` (dead-code/dupes/circular-deps), `tsc` (TS semantic), `ast-grep` (AST-based Phase 3 findings) — all **auto-fetched via `npx`** on first use with a `command -v <binary>` fast-path. WebSearch (built-in, CVE lookups in Phase 2.5). Missing optional tools fall back to rg with no crash.
 
 ## File Map
 
@@ -59,19 +61,24 @@ agents/
 config/
   exclusions.json          # Exclusion patterns applied by agent
   presets.json             # Presets (pr-check, a11y-audit, full-audit)
+  custom-checks.json       # Evidence-based company-specific checks (Part H)
+  languages.json           # Multi-language mechanism: JS/TS populated, Python/PHP placeholders (Part I)
 templates/                   # Output contracts (agent-loaded at Phase 4)
   report.md                  # Markdown report template (placeholder skeleton)
-  reviews-entry.json         # Minimal 6-field entry shape for .codelens/reviews.json
+  reviews-entry.json         # Flat 11-field entry shape for .codelens/reviews.log (schema required, v1)
   README.md                  # Abstraction rules + translation maps (applies to both contracts)
 references/                  # Local-only design references (gitignored — not shipped)
   codebase-analyzer.md         # Structural pattern the agent body follows
 .claude/
   settings.local.json      # User-local Claude Code settings (MCP allowlist)
 .codelens/                 # Runtime state (gitignored)
-  reviews.json             # Append-only review log
+  reviews.log              # Append-only review log (11-field flat entries, one per line)
 scripts/
   bench-phase.sh           # Benchmark harness for prompt-cost measurement
   bench-mcp-settings.json  # MCP allowlist for headless bench runs
+  validate-entry.js        # Gate G3 — validates reviews.log entry shape
+  validate-report.sh       # Gate G2 — validates markdown report structure
+  validate-custom-checks.js # Validates config/custom-checks.json schema (Part H)
 archive/                   # Prior-version artifacts (shipped for decision-history reference)
   agents/                  # Superseded agent bodies from v1.x
   reports/                 # Prior-version design docs
@@ -121,7 +128,7 @@ The `codelens-reviewer` agent obeys these structural rules (encoded as `<constra
 - **Evidence-backed** — every finding has file path, line number, snippet.
 - **Cross-domain dedup** — same `file:line` (±2 lines) across domains merges into one row.
 - **Exclusions honored** — read `config/exclusions.json` in Phase 2's first sub-step.
-- **Append-only log** — every review appends one entry to `.codelens/reviews.json` (6 fields: `timestamp`, `scope`, `summary`, `findings`, `reportPath`, `reviewerVersion`).
+- **Append-only log** — every review appends one entry to `.codelens/reviews.log` after all three Phase 4 `STATUS:` markers print. Entry has 11 fields (`ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) plus required `schema` (current: `"1"`).
 
 ## Common Workflows
 
@@ -151,3 +158,15 @@ Users install via:
 /plugin marketplace add nurmdrafi/codelens
 /plugin install codelens
 ```
+
+`/plugin install codelens` auto-provisions both MCP servers (context-mode, Context7) via the `mcpServers` block in `plugin.json`. The four npm CLIs (biome, fallow, tsc, ast-grep) auto-fetch via `npx` on first use. Only `rg` (ripgrep) remains user-installed — it's a native binary that can't be bundled.
+
+## v0.0.10 changes (beta — no backward compatibility)
+
+- **Self-contained install**: `mcpServers` block in `plugin.json` provisions context-mode + Context7 on install; `permissions.allow` block eliminates per-review Bash prompts; npm CLIs auto-fetch via `npx` with `command -v <binary>` fast-path.
+- **Config-driven extensibility**: `config/custom-checks.json` ships (evidence-based company-specific checks); `config/languages.json` ships (multi-language mechanism — JS/TS fully populated, Python/PHP placeholders for follow-up PRs).
+- **Stack-aware doctor**: detects project stack (js-ts/python/php/go/rust) and `[SKIP]`s tool checks that don't apply.
+- **Token efficiency**: agent prompt ≥25% smaller (shared `<severity-ladder>`, trimmed `<constraints>` overlap, enumerated Phase 2.5 triggers, deterministic Phase 3 queries).
+- **Schema required**: `reviews.log` entries require `schema: "1"`; `reviews.log` is the canonical shape (no migration prose).
+- **Diff-scope fix**: `scopePath` for diff scope no longer word-splits (PID-suffixed temp file + `rg --files-from`).
+- **Doc drift fixed**: every primary doc reflects the actual 11-field shape and the three Phase 4 gates.
