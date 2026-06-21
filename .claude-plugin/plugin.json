@@ -31,6 +31,37 @@
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp"]
     }
+  },
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context-mode_context-mode__*",
+      "mcp__plugin_context7_context7__*",
+      "WebSearch",
+      "Read",
+      "Write",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(test:*)",
+      "Bash(command:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git status:*)",
+      "Bash(git show:*)",
+      "Bash(biome:*)",
+      "Bash(fallow:*)",
+      "Bash(tsc:*)",
+      "Bash(sg:*)",
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Bash(bash:*)",
+      "Bash(rm -f:*)"
+    ]
   }
 }
 
