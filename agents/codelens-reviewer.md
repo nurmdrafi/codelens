@@ -313,41 +313,33 @@ Augment Phase 2 findings with doc-verified evidence. If no triggers fire: SKIP P
 
 ## Phase 3: Hotspot Deep-Dive (tool-driven, single batched call)
 
-Top 10–15 files by **riskScore** from Phase 1 (hard cap: 15). ALL hotspots are processed in ONE `ctx_batch_execute` call — accumulate per-file pattern commands into a single batch, run once, reason across all results. NO regex matching in the prompt; model's job is to read indexed tool output and assign severity.
+Top 10–15 files by **riskScore** from Phase 1 (hard cap: 15). ALL hotspots in ONE `ctx_batch_execute` — accumulate cmds, run once, reason across results. No regex in prompt; model reads indexed tool output and assigns severity.
 
-**v0.0.7 optimization:** Previous versions called `ctx_batch_execute` once per hotspot (15 LLM turns). Benchmark on pickaboo-frontend (15 hotspots × 5 patterns = 75 commands): sequential 570ms / 15 turns → single batch 232ms / 1 turn (2.46× wall-clock, ~93% LLM-turn reduction, zero finding loss).
+**v0.0.7 optimization:** previous versions called `ctx_batch_execute` per hotspot (15 turns). Single-batch: 1 turn, ~93% LLM-turn reduction, zero finding loss.
 
-**Build the commands array dynamically** — outer loop over hotspot files, inner conditionals per `config.domains`. Each command's `command` field is a pure shell string; no JS evaluation inside it. Pseudocode:
+**Build cmds array dynamically** — outer loop over hotspots, inner conditionals per `config.domains`. Each `command` is a pure shell string; no JS eval inside. Pseudocode:
 
 ```javascript
-const HOTSPOTS = ["<file1>", "<file2>", ..., "<file15>"];  // top 15 by riskScore
+const HOTSPOTS = ["<file1>", ..., "<file15>"];  // top 15 by riskScore
 const cmds = [];
-
-// AST_LANG and PATTERNS come from languages[primaryLang].astGrepLang + phase3Patterns.
-// For primaryLang === 'js-ts': AST_LANG = "tsx,jsx,ts,js", patterns include xss-innerhtml,
-// xss-eval, empty-catch, btn-no-aria, img-no-alt. For 'unknown' or any placeholder language
-// without phase3Patterns populated, all ast-grep pushes are skipped (rg-only Phase 3).
+// AST_LANG + PATTERNS from languages[primaryLang]. Skipped entirely when lang unknown
+// or placeholder (no phase3Patterns) — rg-only Phase 3.
 const AST_LANG = (languages[primaryLang] && languages[primaryLang].astGrepLang) || null;
 const PATTERNS = (languages[primaryLang] && languages[primaryLang].phase3Patterns) || {};
 
 for (const FILE of HOTSPOTS) {
-  if (!AST_LANG || !PATTERNS) continue;  // skip ast-grep entirely for unknown langs
-  // SECURITY
+  if (!AST_LANG || !PATTERNS) continue;
   if (config.domains.includes('security')) {
     if (PATTERNS['xss-innerhtml']) cmds.push({label: "ag-xss-innerhtml-" + cmds.length, command: "(sg run -p '" + PATTERNS['xss-innerhtml'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null || rg -n -e 'innerHTML' -e 'dangerouslySetInnerHTML' \"" + FILE + "\" 2>/dev/null) || echo none"});
     if (PATTERNS['xss-eval'])      cmds.push({label: "ag-xss-eval-" + cmds.length,       command: "(sg run -p '" + PATTERNS['xss-eval'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null || rg -n 'eval\\(' \"" + FILE + "\" 2>/dev/null) || echo none"});
   }
-  // ARCHITECTURE — imports/exports sourced from fallow (Phase 2). No regex here.
-  // QUALITY
+  // ARCHITECTURE: imports/exports from fallow (Phase 2). No regex here.
   if (config.domains.includes('quality')) {
     if (PATTERNS['empty-catch'])   cmds.push({label: "ag-empty-catch-" + cmds.length,    command: "(sg run -p '" + PATTERNS['empty-catch'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null || rg -n 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}' \"" + FILE + "\" 2>/dev/null) || echo none"});
   }
-  // console.log, hardcoded-secret, localstorage: sourced from Phase 2 rg batch — re-verify via ctx_search.
-  // A11Y — JSX self-closing tags use `/>`. Note: ast-grep-first chains must use `command -v sg` check,
-  // NOT `|| rg fallback`, because the pipeline `sg ... | rg -v ... | head` succeeds with empty output
-  // when sg is missing — so the || branch never fires. Use `command -v sg` to explicitly route.
-  // Three-tier fallback: local sg -> npx --yes @ast-grep/cli -> rg. Each tier only fires if the
-  // previous errored or returned empty. npx tier auto-fetches @ast-grep/cli on first use.
+  // A11Y: ast-grep-first chains MUST use `command -v sg` check, not `|| rg fallback`
+  // (because `sg ... | rg -v ... | head` succeeds with empty output when sg missing).
+  // Three-tier: local sg → npx @ast-grep/cli (auto-fetches) → rg.
   if (config.domains.includes('a11y')) {
     if (PATTERNS['btn-no-aria'])   cmds.push({label: "ag-btn-no-aria-" + cmds.length,    command: "command -v sg >/dev/null 2>&1 && (sg run -p '" + PATTERNS['btn-no-aria'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (npx --yes @ast-grep/cli run -p '" + PATTERNS['btn-no-aria'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || (rg -n '<button' \"" + FILE + "\" 2>/dev/null | rg -v 'aria-label' | head -20) || echo none"});
     if (PATTERNS['img-no-alt'])    cmds.push({label: "ag-img-no-alt-" + cmds.length,     command: "command -v sg >/dev/null 2>&1 && (sg run -p '" + PATTERNS['img-no-alt'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (npx --yes @ast-grep/cli run -p '" + PATTERNS['img-no-alt'] + "' -l " + AST_LANG + " \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || (rg -n '<img' \"" + FILE + "\" 2>/dev/null | rg -v 'alt=' | head -20) || echo none"});
@@ -355,24 +347,14 @@ for (const FILE of HOTSPOTS) {
   }
 }
 
-// Guard: if cmds.length > 100, split into 2 batches of ~50 (ctx_batch_execute practical limit).
+// If cmds > 100, split into two batches of ~50 (ctx_batch_execute practical limit).
 const BATCH_SIZE = 100;
+const staticQ = ["xss innerHTML findings", "eval usage", "empty catch",
+                 "missing aria-label buttons", "missing alt images", "missing input labels"];
 if (cmds.length <= BATCH_SIZE) {
-  ctx_batch_execute({
-    commands: cmds,
-    concurrency: 8,
-    queries: [
-      "xss innerHTML findings", "eval usage", "empty catch",
-      "missing aria-label buttons", "missing alt images", "missing input labels",
-      HOTSPOTS[0], HOTSPOTS[1], HOTSPOTS[2]   // top-3 by risk — for per-file evidence retrieval
-    ]
-  });
+  ctx_batch_execute({commands: cmds, concurrency: 8,
+    queries: [...staticQ, HOTSPOTS[0], HOTSPOTS[1], HOTSPOTS[2]]});
 } else {
-  // Two sequential batches. Findings from both indexed into the same knowledge base.
-  // Deterministic queries: static signal names + HOTSPOTS slices so each batch's
-  // evidence-retrieval queries match the files it actually processed.
-  const staticQ = ["xss innerHTML findings", "eval usage", "empty catch",
-                   "missing aria-label buttons", "missing alt images", "missing input labels"];
   ctx_batch_execute({commands: cmds.slice(0, BATCH_SIZE), concurrency: 8,
                      queries: [...staticQ, ...HOTSPOTS.slice(0, 3)]});
   ctx_batch_execute({commands: cmds.slice(BATCH_SIZE), concurrency: 8,
@@ -380,7 +362,7 @@ if (cmds.length <= BATCH_SIZE) {
 }
 ```
 
-After results return, re-verify evidence from Phase 2 batched outputs (biome, tsc, fallow, p2-sec-*) via `ctx_search(queries: ["<signal> " + FILE])` for any file mentioned in the indexed Phase 3 output. Do NOT re-read files.
+After results return, re-verify evidence from Phase 2 batched outputs via `ctx_search(queries: ["<signal> " + FILE])` for any file in indexed Phase 3 output. Do NOT re-read files.
 
 **Coverage matrix — old regex → new source:**
 
@@ -397,19 +379,17 @@ After results return, re-verify evidence from Phase 2 batched outputs (biome, ts
 
 ## Phase 4: Compile Report
 
-> ### ⛔ PHASE 4 PREFLIGHT — read before any other Phase 4 action
+> ### ⛔ PHASE 4 PREFLIGHT — three non-negotiable gates
 >
-> Phase 4 has THREE non-negotiable gates. Each gate prints a `STATUS:` marker to the transcript. If any gate's marker is missing, **do not proceed to Step 7 (append)** — the smoke test greps for these markers and the run is a failure without them:
+> Each gate prints a `STATUS:` marker. Smoke test greps for these — missing marker = failed run. **Do not proceed to Step 7 (append) until all three fire.**
 >
-> | Gate | Step | Required tool call (exact) | Required marker |
+> | Gate | Step | Required tool call | Required marker |
 > |---|---|---|---|
 > | G1 — load contracts | 1 | `ctx_execute` js ×3 → `fs.readFileSync(CLAUDE_PROJECT_DIR + '/templates/...')` | `STATUS: gates-loaded` |
 > | G2 — report validates | 4 | `ctx_execute` shell → `bash scripts/validate-report.sh <file>` | `STATUS: report-ok` |
 > | G3 — entry validates | 6 | `ctx_execute` js → `require(CLAUDE_PROJECT_DIR + '/scripts/validate-entry.js')` | `STATUS: entry-ok` |
 >
-> **You MUST print all three markers before Step 7.** The markers are how the smoke test confirms the gates fired.
->
-> **If ANY gate call errors or returns empty: do NOT substitute your own logic, do NOT fall back to training data, do NOT write the report, do NOT append to reviews.log.** Print `STATUS: partial reason=<gate> <error>` and halt the entire review. The user will re-run with a fixed environment. Gate failures are not recoverable by improvisation — the whole point of the gates is to make output drift loud.
+> **If ANY gate errors or returns empty:** print `STATUS: partial reason=<gate> <error>` and halt. Do NOT improvise, fall back, write the report, or append. Gate failures are not recoverable — the point is to make output drift loud.
 
 **Phase 4 is a strict sequence. Execute steps 1–7 in order. Do NOT skip steps. Do NOT write any file until step 1 completes AND prints `STATUS: gates-loaded`.**
 
