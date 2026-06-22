@@ -1,0 +1,13 @@
+# metric_direction: lower_is_better
+# guard: findings_total>=20 AND findings_CH>=5 AND exit_code=0
+# baseline_t_prompt: 10319 (v0.0.10-smoke, agent body=41276 bytes)
+# target_t_prompt: <=7500 (beat v0.0.9-smoke-r2=7393)
+# scope: agents/codelens-reviewer.md
+# verify: tail -1 $PLUGIN_DIR/docs/superpowers/benchmarks/bench-log.tsv | awk '{print $2}'
+# final_commit: da2404b (iter1 — winner)
+iteration	timestamp	commit	metric	delta	guard_status	guard_metric	status	description
+0	2026-06-22T10:59:00	126d63e	10319	0.0	PASS	24/8	baseline	v0.0.10-smoke row
+1	2026-06-22T11:54:00	da2404b	9857	-4.5%	PASS	50/16	keep	strip Phase 3 + Phase 4 preflight prose (-1847B). Findings doubled. Gate markers went missing but validators ran fine.
+2	2026-06-22T12:08:00	4b1daf2	9967	-3.4%	FAIL	19/6	discard	restore Phase 4 gate force language (+439B). Stricter gates made agent cautious — findings dropped below guard.
+3	2026-06-22T12:18:00	8b0fdd3	9721	-5.8%	CRASH	0/0	discard-API-529	condense <constraints> block (-543B). Hit API Error 529 (overloaded server) at turn 4 — inconclusive. Reverted by precaution.
+2-rerun	2026-06-22T12:31:00	4b1daf2	-	-	CRASH	-/-	discard-API-529	Second API Error 529 — hit at turn 1, agent never ran. API server is unstable; deferring reruns.

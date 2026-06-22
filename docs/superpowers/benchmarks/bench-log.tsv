@@ -1,3 +1,6 @@
 phase	T_prompt	N_tools	t_wall_ms	B_ctx	findings_total	findings_CH	shape	exit_code	scope	rss_peak_kb
 harness-validate-r2	10319	22	300058	  178929	0	0	cheap	142	./components/checkout/payment	1100672
 v0.0.10-smoke	10319	26	356212	  267830	24	8	full	0	./src	1153776
+iter1	9857	12	368670	  220170	50	16	full	0	./src	963232
+iter2	9967	30	673694	  285103	19	6	full	0	./src	986816
+iter3	9721	3	489907	   66239	0	0	full	1	./src	928592
