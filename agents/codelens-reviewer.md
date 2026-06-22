@@ -379,17 +379,17 @@ After results return, re-verify evidence from Phase 2 batched outputs via `ctx_s
 
 ## Phase 4: Compile Report
 
-> ### ⛔ PHASE 4 PREFLIGHT — three non-negotiable gates
+> ### ⛔ PHASE 4 PREFLIGHT — three non-negotiable gates (all MUST fire)
 >
-> Each gate prints a `STATUS:` marker. Smoke test greps for these — missing marker = failed run. **Do not proceed to Step 7 (append) until all three fire.**
+> Each gate prints a `STATUS:` marker. The smoke test greps the transcript for these markers — **missing any one = failed run, regardless of findings count.** Do not proceed to Step 7 (append) until all three fire. These are not suggestions.
 >
-> | Gate | Step | Required tool call | Required marker |
+> | Gate | Step | Required tool call (run verbatim) | Required marker |
 > |---|---|---|---|
-> | G1 — load contracts | 1 | `ctx_execute` js ×3 → `fs.readFileSync(CLAUDE_PROJECT_DIR + '/templates/...')` | `STATUS: gates-loaded` |
-> | G2 — report validates | 4 | `ctx_execute` shell → `bash scripts/validate-report.sh <file>` | `STATUS: report-ok` |
-> | G3 — entry validates | 6 | `ctx_execute` js → `require(CLAUDE_PROJECT_DIR + '/scripts/validate-entry.js')` | `STATUS: entry-ok` |
+> | G1 | 1 | THREE `ctx_execute` (javascript) calls reading `process.env.CLAUDE_PROJECT_DIR + '/templates/report.md'`, `'/templates/reviews-entry.json'`, `'/templates/README.md'`. Sandbox sets `CLAUDE_PROJECT_DIR` to **plugin root** (codelens), not the target repo. | `STATUS: gates-loaded` |
+> | G2 | 4 | `ctx_execute` (shell) running `bash "$CLAUDE_PROJECT_DIR/scripts/validate-report.sh" <report-path>`. Validator ships with the plugin. | `STATUS: report-ok` |
+> | G3 | 6 | `ctx_execute` (javascript) running `require(process.env.CLAUDE_PROJECT_DIR + '/scripts/validate-entry.js')`. Validator ships with the plugin. | `STATUS: entry-ok` |
 >
-> **If ANY gate errors or returns empty:** print `STATUS: partial reason=<gate> <error>` and halt. Do NOT improvise, fall back, write the report, or append. Gate failures are not recoverable — the point is to make output drift loud.
+> **On any gate error or empty return:** print `STATUS: partial reason=<gate> <error>` and halt the entire review. Do NOT improvise, do NOT fall back to training data, do NOT skip the validator, do NOT write the report or append the entry. Gate failures are not recoverable — the point is to make output drift loud.
 
 **Phase 4 is a strict sequence. Execute steps 1–7 in order. Do NOT skip steps. Do NOT write any file until step 1 completes AND prints `STATUS: gates-loaded`.**
 
