@@ -35,7 +35,7 @@ v0.0.10 is the extensibility + self-contained release. Beta — no backward comp
 
 ### Fixed
 
-- Doc drift: 6-field/reviews.json → 11-field/reviews.log everywhere (templates/README.md, CLAUDE.md, README.md, CONTRIBUTING.md, skills/review/SKILL.md). Plus the new schema-required field documented consistently.
+- Doc drift: 6-field/reviews.json → 12-field/reviews.log everywhere (templates/README.md, CLAUDE.md, README.md, CONTRIBUTING.md, skills/review/SKILL.md). The `schema` field is counted as the first of twelve (required, current value `"1"`).
 - "No phase gates" claim in agent `<role>` block → accurate description of three Phase 4 STATUS gates.
 - Stale v0.0.1 banner → v0.0.10 beta framing.
 - `templates/report.md` no longer hardcodes the plugin name (was violating its own abstraction rule #2). Same fix applied to one residual codelens self-reference in the agent body's Step 2 example.
@@ -46,6 +46,16 @@ v0.0.10 is the extensibility + self-contained release. Beta — no backward comp
 - **Token-reduction gate adjusted.** The original ≥25% reduction target (final ≤22,180 bytes) was not achievable through E1–E4 as prescribed. The agent ended at 41,277 bytes — larger than v0.0.9 (29,574) because Parts B+C added load-bearing functionality (diff temp-file, npx wrappers) and Part I added config-driven indirection (~84 lines). New gate: "no accidental bloat" + clarity invariants (single severity-ladder source, enumerated Phase 2.5 triggers, deterministic Phase 3 queries) + unchanged severity-drift gate. See `docs/superpowers/benchmarks/2026-06-19-v0.0.10-token-reduction.md` for full accounting.
 - **End-to-end smoke test (security + a11y severity regression check, clean-install /plugin install) deferred.** Requires an interactive Claude Code session. Flagged for follow-up before tagging the GitHub release.
 
+### Post-release prompt trim (iter1 — 2026-06-22)
+
+Benchmark-driven iteration loop against the pickaboo-frontend smoke target. iter1 was kept (`da2404b`); iter2 and iter3 were reverted. **No logic change** — same gates, same validators, same contracts.
+
+- **Agent body trimmed -4.5%** (41,276 B → 39,429 B). T_prompt 10,319 → 9,857. Findings doubled on the smoke target (24 → 50 total, 8 → 16 Critical/High). B_ctx down 17.8% (267,830 → 220,170). N_tools down from 26 → 12 per review.
+- **Phase 3** — redundant JS comments stripped from the `for (const FILE of HOTSPOTS)` loop. Same commands, same three-tier ast-grep fallback (local `sg` → `npx @ast-grep/cli` → rg), same domain filtering.
+- **Phase 4 preflight** — blockquote prose converted to a compact 4-column table (Gate / Step / Required tool call / Required marker). Same G1/G2/G3 gates, same `STATUS:` markers, same strict ordering.
+- **Trade-off accepted:** on one smoke run, iter1 dropped the `report-ok` and `entry-ok` markers (only `gates-loaded` fired). Validators still ran and the report persisted — drift fails loud at the validator, not the marker. iter2 attempted to restore strict gate language but findings dropped below the guard threshold (19 total, 6 CH), so iter2 was discarded. iter3 hit an API 529 (server overload) and was reverted by precaution.
+- Full benchmark loop artifacts: `autoresearch/loop-20260622-1059/` (summary, shrink-plan, results.tsv). Bench harness fixes committed separately as `c8020e3` (timeout, RSS sampling, exit-code capture, partial recovery).
+
 ## [0.0.9] - 2026-06-19
 
 Schema-driven output contracts + deterministic validation gates + Phase 4 gate-hardening. This release absorbs the previously-unreleased v0.0.8 work (output contracts, validators, directory reorg) and the v0.0.9 gate-hardening that makes those gates actually fire.
@@ -53,7 +63,7 @@ Schema-driven output contracts + deterministic validation gates + Phase 4 gate-h
 ### Added
 
 - **Output contracts externalized** — report template, reviews-log entry schema, and abstraction rules moved out of the agent body into `templates/report.md`, `templates/reviews-entry.json`, and `templates/README.md`. The agent loads them at Phase 4 start instead of carrying the structures inline.
-- **Reviews-log entry schema** — flat 11-field shape (`ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) with `additionalProperties: false`. Replaces the prior 6-field long-key shape (`timestamp`/`summary`/`findings`/`reportPath`/`reviewerVersion`) that had drifted.
+- **Reviews-log entry schema** — flat 12-field shape (`schema`, `ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) with `additionalProperties: false`. `schema` is required (current: `"1"`). Replaces the prior 6-field long-key shape (`timestamp`/`summary`/`findings`/`reportPath`/`reviewerVersion`) that had drifted.
 - **Deterministic validators** — `scripts/validate-report.sh` (markdown structural lint) and `scripts/validate-entry.js` (hand-written JSON shape check). Both print `OK` / `FAIL: <reason>` and exit 0/1.
 - **Phase 4 validation gates** — Step 1 loads the three output contracts; Step 4 runs the report validator; Step 6 runs the entry validator. Step 7's append is conditional on all three gates having fired.
 - **Phase 4 preflight banner** — a `⛔ PHASE 4 PREFLIGHT` block at the top of Phase 4 listing the three gates, their exact tool calls, and required `STATUS:` markers. Reframes the gates as an observable contract with the smoke-test harness rather than internal hygiene.
@@ -66,7 +76,7 @@ Schema-driven output contracts + deterministic validation gates + Phase 4 gate-h
 
 ### Fixed
 
-- **Schema drift on reviews.log entry (persistent since v0.0.1)** — the agent repeatedly produced entries with wrong keys (`timestamp`, `scopeTarget`, `domains`, `outputFile`, `summary: {...}`, `topFindings`, `reviewer`, `methodology`) instead of the flat 11-field schema, because the gate instructions were pseudo-syntax in prose (`ctx_execute_file path: "..."`) that the agent treated as descriptive. Phase 4 now uses real, copy-pasteable JSON tool-call blocks.
+- **Schema drift on reviews.log entry (persistent since v0.0.1)** — the agent repeatedly produced entries with wrong keys (`timestamp`, `scopeTarget`, `domains`, `outputFile`, `summary: {...}`, `topFindings`, `reviewer`, `methodology`) instead of the flat 12-field schema, because the gate instructions were pseudo-syntax in prose (`ctx_execute_file path: "..."`) that the agent treated as descriptive. Phase 4 now uses real, copy-pasteable JSON tool-call blocks.
 - **Step 1 path resolution (v0.0.9-r1 bug)** — `ctx_execute_file` resolved `path: "templates/..."` against the target repo's cwd, not the plugin root. Fixed by switching Step 1 to `ctx_execute` with `fs.readFileSync(process.env.CLAUDE_PROJECT_DIR + '/templates/...')`, matching the pattern already used by Steps 4/6.
 - **Agent improvisation on gate failure (v0.0.9-r1 bug)** — when a gate call errored, the agent would substitute its own ad-hoc logic and bypass the remaining gates. Fixed by a Phase-4-wide preflight rule: "If ANY gate call errors or returns empty: do NOT substitute your own logic, do NOT fall back to training data. Print `STATUS: partial` and halt."
 - **Step 4 report-path prefix (v0.0.9-r1 bug)** — the validator command incorrectly prefixed the report path with `$CLAUDE_PROJECT_DIR/`, but the report lives at the target repo's root (runtime cwd), not the plugin root. Prefix kept only on the script path.

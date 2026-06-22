@@ -218,6 +218,31 @@ Evaluates keyboard navigation, screen reader compatibility, visual/color contras
 
 ## How It Works
 
+```mermaid
+flowchart TD
+    %%{init: {"layout": "elk"}}%%
+    classDef phase stroke:#818cf8,fill:#eef2ff;
+    classDef result stroke:#4ade80,fill:#f0fdf4;
+    classDef agent stroke:#38bdf8,fill:#f0f9ff;
+
+    Start([User invokes review]) --> Dispatch["Skill dispatch & infer context"]
+    Dispatch --> Reviewer["codelens-reviewer agent"]
+    class Reviewer agent;
+
+    subgraph Process["Automated Review Phases"]
+        direction TB
+        P0["Phase 0 - Preflight"] --> P1["Phase 1 - Stack Detection"]
+        P1 --> P2["Phase 2 - Risk Evaluation"]
+        P2 --> P3["Phase 3 - Deep Analysis"]
+        P3 --> P4["Phase 4 - Report Compilation"]
+    end
+    class P0,P1,P2,P3,P4 phase;
+
+    Reviewer --> Process --> Result["Final Report Generated"]
+    class Result result;
+    Result --> Finish([Review complete])
+```
+
 codelens runs as a **single agent** with **dispatcher-side intent resolution**. When you invoke `/codelens:review`, the skill reads your prompt and resolves which domains and scope you requested, then passes a literal config to the agent — it builds a command list containing only the requested domains' patterns, scoped to your path or diff. The agent executes that list verbatim.
 
 This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) guidance: code review is a *well-defined task*, so it should be a *workflow* (predefined code paths) with deterministic filtering in the dispatcher, not agent discretion. The agent cannot analyze a domain you didn't request or scan outside your scope — those commands simply aren't in the config it receives.
@@ -230,15 +255,15 @@ This follows Anthropic's [Building Effective Agents](https://www.anthropic.com/r
 
 **Phase 0:** `ctx_stats` confirms context-mode MCP is loaded.
 
-**Phase 1 — Inventory:** Maps the scoped file set (`rg --files`, line counts, tech-stack) via one `ctx_batch_execute`. Resolves `scopePath` from `config.scope`.
+**Phase 0.5:** One `ctx_execute` loads `config/custom-checks.json` and `config/languages.json` (skipped silently if absent).
 
-**Phase 2 — Pattern Analysis:** Reads `config/exclusions.json` once and bakes exclusions into `-g '!...'` flags. Runs the per-domain rg commands **inlined in the agent body** — filtered by `config.domains`. Results auto-indexed; previews enter context, raw bytes stay out.
+**Phase 1+2 — Inventory + Patterns + Risk Signals (single batch):** Stack detection (config-driven via `languages.json`), file inventory, per-domain rg patterns, complexity/finding-density/centrality/loc signals, and custom-check detections all run in ONE `ctx_batch_execute` (concurrency 8). Scope resolution runs first, then exclusions from `config/exclusions.json` are baked into `-g '!...'` flags. Results auto-indexed; previews enter context, raw bytes stay out. One `ctx_execute` post-processor computes the Risk Score (`0.4×finding_density + 0.2×loc + 0.2×complexity + 0.2×import_centrality`) and selects the top 10–15 hotspots.
 
 **Phase 2.5 — Doc & CVE Verification (on-flag):** Context7 + WebSearch only when Phase 2 flags suspect libraries. Skipped entirely if nothing flag-worthy was found.
 
-**Phase 3 — Hotspot Deep-Dive (single-pass):** For the top 10–15 largest files, ONE `ctx_execute_file` call per file. Processing code reads `config.domains` and runs `if (CHECKS.includes("security")) {...}` branches — only requested domains' signals extracted. Files are read **exactly once**.
+**Phase 3 — Hotspot Deep-Dive (single batch):** ALL hotspots processed in ONE `ctx_batch_execute` (concurrency 8) — accumulate per-file ast-grep commands (with rg fallback) into a single batch, run once, reason across all results. Patterns come from `languages[primaryLang].phase3Patterns` (config-driven, not inlined); unknown stacks skip ast-grep and fall back to rg-only. No regex matching in the prompt — the model reads indexed tool output and assigns severity.
 
-**Phase 4 — Compile Report:** Three structural `STATUS:` gates (`gates-loaded`, `report-ok`, `entry-ok`) print in strict order before any file is written. Native `Write` to the report file at repo root. Severity-first ordering, cross-domain dedup (same `file:line` ±2 lines merged). Appends one 11-field entry (`ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) plus required `schema: "1"` to `.codelens/reviews.log`.
+**Phase 4 — Compile Report:** Three structural `STATUS:` gates (`gates-loaded`, `report-ok`, `entry-ok`) print in strict order before any file is written. Native `Write` to the report file at repo root. Severity-first ordering, cross-domain dedup (same `file:line` ±2 lines merged). Appends one 12-field entry (`schema`, `ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) with `schema: "1"` required to `.codelens/reviews.log`.
 
 The agent is **stateless across reviews**: no persisted intermediate JSON, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body. **Phase 4 is the exception** — the three `STATUS:` markers must print in order before the entry is appended, so output drift fails loud, not silent.
 
@@ -355,7 +380,7 @@ codelens/
 │   └── exclusions.json        # Exclusion patterns (defaults + byDomain + keepInScope)
 ├── templates/                   # Output contracts (agent-loaded at Phase 4)
 │   ├── report.md              # Markdown report template (placeholder skeleton)
-│   ├── reviews-entry.json     # Flat 11-field entry shape for .codelens/reviews.log (schema required, v1)
+│   ├── reviews-entry.json     # Flat 12-field entry shape for .codelens/reviews.log (schema required, v1)
 │   └── README.md              # Abstraction rules + translation maps
 ├── references/                   # Local-only design references (gitignored)
 │   └── codebase-analyzer.md   # Structural pattern the agent body follows

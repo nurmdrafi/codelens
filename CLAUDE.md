@@ -22,9 +22,9 @@ Markdown only — skills, agents, configs. No build step, no runtime dependencie
       Phase 1+2: Inventory + Patterns + Risk Signals (ONE ctx_batch_execute, concurrency=8)
                 → weighted hotspot selection via one ctx_execute post-processor (Risk Score)
       Phase 2.5: Doc/CVE verify (on-flag only, Context7 + WebSearch)
-      Phase 3: Hotspots (ctx_batch_execute per file × 10–15, ast-grep + rg fallback, tool-driven)
+      Phase 3: Hotspots (single ctx_batch_execute across 10–15 files, ast-grep + rg fallback, tool-driven)
       Phase 4: Compile — three STATUS gates (gates-loaded, report-ok, entry-ok) then
-                Write report + append one 11-field entry to .codelens/reviews.log
+                Write report + append one 12-field entry to .codelens/reviews.log
 ```
 
 The agent is **stateless across reviews**: no persisted intermediate JSON, no `_methodology` self-reports. Structural guarantees are encoded as imperative constraints in the agent body. **Phase 4 is the exception** — three `STATUS:` markers (`gates-loaded`, `report-ok`, `entry-ok`) must print in strict order before the entry is appended. Output drift fails loud, not silent.
@@ -65,14 +65,14 @@ config/
   languages.json           # Multi-language mechanism: JS/TS populated, Python/PHP placeholders (Part I)
 templates/                   # Output contracts (agent-loaded at Phase 4)
   report.md                  # Markdown report template (placeholder skeleton)
-  reviews-entry.json         # Flat 11-field entry shape for .codelens/reviews.log (schema required, v1)
+  reviews-entry.json         # Flat 12-field entry shape for .codelens/reviews.log (schema required, v1)
   README.md                  # Abstraction rules + translation maps (applies to both contracts)
 references/                  # Local-only design references (gitignored — not shipped)
   codebase-analyzer.md         # Structural pattern the agent body follows
 .claude/
   settings.local.json      # User-local Claude Code settings (MCP allowlist)
 .codelens/                 # Runtime state (gitignored)
-  reviews.log              # Append-only review log (11-field flat entries, one per line)
+  reviews.log              # Append-only review log (12-field flat entries, one per line)
 scripts/
   bench-phase.sh           # Benchmark harness for prompt-cost measurement
   bench-mcp-settings.json  # MCP allowlist for headless bench runs
@@ -119,16 +119,16 @@ The `codelens-reviewer` agent obeys these structural rules (encoded as `<constra
 - **Domain-aware** — only run commands and report sections for domains in `config.domains`. Phase 3 filters ast-grep commands at construction time, not via JS inside shell strings.
 - **Scope-aware** — every rg command targets the resolved `scopePath`.
 - **rg over Glob/Grep** — always.
-- **ctx_batch_execute** for non-rg Phase 1–2 commands — rg uses native Bash (v0.0.2 fix).
-- **ctx_batch_execute** for Phase 3 ast-grep/rg fallback — per hotspot, domain-filtered command list.
-- **ctx_stats first** — agent's first Phase 0 call is `ctx_stats` (preceded only by `rg --version` preflight).
+- **ctx_batch_execute** for non-rg Phase 1–2 commands — rg uses native Bash.
+- **ctx_batch_execute** for Phase 3 ast-grep/rg fallback — single batched call across all hotspots, domain-filtered command list.
+- **ctx_stats first** — agent's first Phase 0 call is `ctx_stats`.
 - **Risk-scored hotspots** — Phase 1 produces top 15 by Risk Score (density + complexity + centrality + loc), not LOC-only.
 - **Tool-driven findings** — Phase 3 sources findings from ast-grep + biome + tsc + fallow + rg; no JS regex in the prompt.
 - **Severity-first ordering** — Critical > High > Medium > Low > Informational.
 - **Evidence-backed** — every finding has file path, line number, snippet.
 - **Cross-domain dedup** — same `file:line` (±2 lines) across domains merges into one row.
 - **Exclusions honored** — read `config/exclusions.json` in Phase 2's first sub-step.
-- **Append-only log** — every review appends one entry to `.codelens/reviews.log` after all three Phase 4 `STATUS:` markers print. Entry has 11 fields (`ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) plus required `schema` (current: `"1"`).
+- **Append-only log** — every review appends one entry to `.codelens/reviews.log` after all three Phase 4 `STATUS:` markers print. Entry has 12 fields (`schema`, `ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`); `schema` is required (current: `"1"`).
 
 ## Common Workflows
 
@@ -169,4 +169,4 @@ Users install via:
 - **Token efficiency**: agent prompt ≥25% smaller (shared `<severity-ladder>`, trimmed `<constraints>` overlap, enumerated Phase 2.5 triggers, deterministic Phase 3 queries).
 - **Schema required**: `reviews.log` entries require `schema: "1"`; `reviews.log` is the canonical shape (no migration prose).
 - **Diff-scope fix**: `scopePath` for diff scope no longer word-splits (PID-suffixed temp file + `rg --files-from`).
-- **Doc drift fixed**: every primary doc reflects the actual 11-field shape and the three Phase 4 gates.
+- **Doc drift fixed**: every primary doc reflects the actual 12-field shape and the three Phase 4 gates.

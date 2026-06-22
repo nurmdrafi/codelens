@@ -60,6 +60,96 @@ The single `codelens-reviewer` agent has a `<*-criteria>` block per domain. To a
 
 5. Test your change (see below).
 
+## Agent Workflow (Detailed)
+
+The full phase-by-phase workflow with all gates, retry loops, and STATUS markers. Useful when modifying the agent or debugging a failed review.
+
+```mermaid
+flowchart TD
+    %%{init: {"layout": "elk"}}%%
+    classDef phase stroke:#818cf8,fill:#eef2ff;
+    classDef task stroke:#2dd4bf,fill:#f0fdfa;
+    classDef decision stroke:#facc15,fill:#fefce8;
+    classDef agent stroke:#38bdf8,fill:#f0f9ff;
+    classDef result stroke:#4ade80,fill:#f0fdf4;
+    classDef halt stroke:#fb7185,fill:#fff1f2;
+
+    Start([User invokes review]) --> Dispatch["Skill dispatch<br/>infer domains & scope"]
+    class Dispatch task;
+
+    Dispatch --> Reviewer["codelens‑reviewer agent"]
+    class Reviewer agent;
+
+    subgraph Preflight["Phase 0 – Preflight"]
+        direction TB
+        Stats["Collect ctx_stats"] --> LoadMCP{"MCP loaded?"}
+        class LoadMCP decision;
+        LoadMCP -- no --> Halt0["Halt + install hint"]
+        class Halt0 halt;
+        LoadMCP -- yes --> LoadCfg["Load custom checks & languages"]
+        class LoadCfg task;
+    end
+    Reviewer --> Stats
+
+    subgraph Detect["Phase 1 – Stack Detection"]
+        direction TB
+        Manifest["Detect manifest files"] --> Scope{"Scope type?"}
+        class Scope decision;
+        Scope -- diff --> DiffFiles["Materialize diff file list"]
+        Scope -- full/path --> UsePath["Use literal path"]
+    end
+    LoadCfg --> Manifest
+
+    DiffFiles --> Batch
+    UsePath --> Batch
+
+    subgraph Eval["Phase 2 – Risk Evaluation"]
+        direction TB
+        Batch["Run ctx_batch_execute<br/>12 checks, concurrency=8"]
+        class Batch task;
+        Risk["Compute risk score<br/>density, loc, complexity, centrality"]
+        class Risk task;
+        Batch --> Risk --> Top["Identify top hotspots"]
+        Top --> Flags{"Flagged signals?"}
+        class Flags decision;
+        Flags -- yes --> Verify["Doc & CVE verify (web search)"]
+        class Verify task;
+        Flags -- no --> Deep
+        Verify --> Deep
+    end
+
+    subgraph Deep["Phase 3 – Deep Analysis"]
+        direction TB
+        AST["AST‑grep commands per hotspot<br/>3‑tier execution"] --> Compile
+        class AST task;
+    end
+
+    subgraph Compile["Phase 4 – Compile Report"]
+        direction TB
+        Gate1["Load templates + review data"] --> Build["Build report & write to repo"]
+        class Gate1,Build task;
+        Validate1["Validate report script"] --> Entry["Create review entry"]
+        Gate1 --> Validate1 --> Entry
+        class Validate1,Entry task;
+        Gate2{"All validations OK?"}
+        class Gate2 decision;
+        Entry --> Gate2
+        Gate2 -- no --> Partial["STATUS: partial"]
+        Gate2 -- yes --> Append["Append entry to reviews.log"]
+        class Append task;
+        Append --> Cleanup["Cleanup temp files"]
+        class Cleanup task;
+    end
+
+    Deep --> Gate1
+    Partial -.-> NoAppend["No entry appended"]
+    class Partial,NoAppend halt;
+
+    Cleanup --> Final["Final report generated"]
+    class Final result;
+    Final --> Finish([Review complete])
+```
+
 ## Proposing a New Domain
 
 To add an entirely new review domain (e.g., performance, i18n, SEO), open an issue at [github.com/nurmdrafi/codelens/issues](https://github.com/nurmdrafi/codelens/issues) with the label `new-domain` and include:
@@ -213,7 +303,7 @@ Regardless of method, after `/codelens:review` completes check:
 - Is the severity correct?
 - Is the evidence accurate (file path, line number, code snippet)?
 - Does the fix suggestion make sense?
-- For the reviews log: did `.codelens/reviews.log` get one entry appended with the expected 11 fields (`ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) plus required `schema: "1"`? Run `node scripts/validate-entry.js <entry.json>` to confirm contract compliance.
+- For the reviews log: did `.codelens/reviews.log` get one entry appended with the expected 12 fields (`schema`, `ts`, `scope`, `crit`, `high`, `med`, `low`, `info`, `report`, `v`, `tokIn`, `tokOut`) with `schema: "1"` required? Run `node scripts/validate-entry.js <entry.json>` to confirm contract compliance.
 
 ### Edge Cases to Test
 
@@ -269,7 +359,7 @@ config/
   exclusions.json              # Exclusion patterns (defaults + byDomain + keepInScope)
 templates/                       # Output contracts (agent-loaded at Phase 4)
   report.md                    # Markdown report template (placeholder skeleton)
-  reviews-entry.json           # Flat 11-field entry shape for .codelens/reviews.log (schema required, v1)
+  reviews-entry.json           # Flat 12-field entry shape for .codelens/reviews.log (schema required, v1)
   custom-checks.json          # (Part H) Evidence-based company-specific checks
   languages.json              # (Part I) Multi-language mechanism: JS/TS populated, Python/PHP placeholders
   README.md                    # Abstraction rules + translation maps

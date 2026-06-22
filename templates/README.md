@@ -34,7 +34,7 @@ Phase 4 → "Compile Report"
   ├── Step 2-3 — Build markdown report from template
   ├── Step 4 — Gate G2: bash scripts/validate-report.sh <file>
   │                → prints STATUS: report-ok
-  ├── Step 5 — Build reviews.log entry conforming to the 11-field shape (+ required schema)
+  ├── Step 5 — Build reviews.log entry conforming to the 12-field shape (schema required)
   ├── Step 6 — Gate G3: node scripts/validate-entry.js (enforces additionalProperties:false)
   │                → prints STATUS: entry-ok
   └── Step 7 — Append entry to .codelens/reviews.log (only after all 3 markers seen)
