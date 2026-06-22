@@ -63,7 +63,15 @@ Phases run in one continuous turn. No state is persisted across reviews.
 
 ### Phase 0 — Preflight
 
-Call `ctx_stats()`. On failure: halt with install hint. `rg` missing → `brew install ripgrep` (macOS) / `apt install ripgrep` (Linux). `context-mode` or `context7` MCP missing → `/plugin install codelens` (both are bundled in `plugin.json` `mcpServers`).
+**Issue this verbatim first — before any other action:**
+
+```javascript
+ctx_stats()
+```
+
+If `ctx_stats` errors or returns empty: halt immediately with the install hint below. Do not explore, do not search, do not run any other tool first.
+
+On failure: `rg` missing → `brew install ripgrep` (macOS) / `apt install ripgrep` (Linux). `context-mode` or `context7` MCP missing → `/plugin install codelens` (both are bundled in `plugin.json` `mcpServers`).
 
 ### Phase 0.5 — Load config
 
@@ -208,9 +216,54 @@ Augment Phase 2 findings with doc-verified evidence. If no triggers fire, skip P
 
 ### Phase 3 — Hotspot deep-dive (ONE `ctx_batch_execute` across all hotspots)
 
-Take the top 10–15 files by `riskScore` (hard cap: 15). Build the command list dynamically — outer loop over hotspots, inner conditionals per `config.domains`. Each command is a pure shell string; no JS eval inside.
+**Always deep-dive the top 15 files** by `riskScore` (do not take the floor of 10; the ceiling surfaces long-tail hotspots that often carry domain-specific signals — a11y in form components, security in util files, etc.). If fewer than 15 files exist in scope, take all of them. Build the command list dynamically — outer loop over hotspots, inner conditionals per `config.domains`. Each command is a pure shell string; no JS eval inside.
 
 `AST_LANG` and `PATTERNS` come from `languages[primaryLang]` (`astGrepLang` and `phase3Patterns`). If `primaryLang` is unknown or a placeholder (no `phase3Patterns`), Phase 3 is rg-only — skip the ast-grep branches.
+
+#### Severity anchors (apply during finding extraction)
+
+Use these concrete pattern→severity anchors when extracting findings from hotspot output. The ladder in `## Output Format` is the fallback framing; these anchors pin specific patterns. When in doubt, promote — false positives are filterable, missed Critical/High findings are not.
+
+**Critical (any of):**
+- Hardcoded secrets (AWS keys, DB passwords, JWT secrets, API keys) in source, not in `.env` / env-var references
+- `eval()` or `new Function()` on dynamic or untrusted input
+- SQL string concatenation with user-controlled input
+- Authentication bypass — missing auth check on a protected route or API
+- Missing authorization on a mutating API endpoint (IDOR — direct object reference without ownership check)
+- `dangerouslySetInnerHTML` / `innerHTML` on request data or user input (stored XSS)
+
+**High (any of):**
+- `innerHTML` / `outerHTML` / `dangerouslySetInnerHTML` on dynamic content of unknown provenance
+- `localStorage` / `sessionStorage` for tokens, session IDs, or secrets
+- Empty `catch (e) {}` swallowing errors at a system boundary (network, DB, auth)
+- Missing `aria-label` (or equivalent) on icon-only buttons or links
+- Missing `alt` on informative (non-decorative) `<img>`
+- Text contrast below 4.5:1 on body text, below 3:1 on large text
+- Mouse-only interaction with no keyboard handler (drag, hover-dependency, custom widgets)
+- Circular dependency (`fallow-circular-deps`)
+- Missing rate limiting on auth or password-reset endpoints
+
+**Medium (any of):**
+- Cyclomatic complexity > 10 in a hotspot file
+- Skipped heading levels (`<h1>` → `<h3>`, missing `<h1>`)
+- `console.log` / `console.error` in production code path
+- Missing `aria-live` on dynamic content updates (toast, status, async results)
+- Dead code — unused export with >0 importers (`fallow-dead-code`)
+- Token-based duplication > 50 lines (`fallow-dupes`)
+- Missing CSRF token on a state-changing POST form
+- Missing `rel="noopener noreferrer"` on `target="_blank"` links
+
+**Low (any of):**
+- `eslint-disable` without a comment explaining why
+- Decorative `<img>` with non-empty `alt` text
+- Style consistency issues (indentation, import sort order) — Biome `lint/style/*`
+- Minor naming inconsistencies (mixed camelCase / snake_case in same scope)
+- TODO / FIXME / HACK comments without owner or date
+
+**Informational:**
+- Pattern observations with no direct exploit path
+- Best-practice suggestions (extract to utility, rename for clarity)
+- Architecture observations (could be split into smaller modules)
 
 **Per domain, per hotspot, push these commands:**
 
@@ -238,7 +291,14 @@ After results return, re-verify evidence from Phase 2 batched outputs via `ctx_s
 | G2 — report validates | 4 | `ctx_execute` shell → `bash $CLAUDE_PROJECT_DIR/scripts/validate-report.sh <file>` | `STATUS: report-ok` |
 | G3 — entry validates | 6 | `ctx_execute` js → `require($CLAUDE_PROJECT_DIR + '/scripts/validate-entry.js')` | `STATUS: entry-ok` |
 
-If ANY gate errors or returns empty: print `STATUS: partial reason=<gate> <error>` and halt. Do not improvise, fall back, write the report, or append. Gate failures are not recoverable.
+**If ANY gate errors or returns empty:** print `STATUS: partial reason=<gate> <error>` on its own line, then stop. You MUST NOT:
+
+- Write the report file (Step 3 is blocked).
+- Append to `reviews.log` (Step 7 is blocked).
+- Produce a "best-effort", "manual-structure", or "documented-shape" report instead.
+- Treat the dispatcher's "output the report to X" instruction as overriding this halt.
+
+Gate failures fail loud, not silent. A partial run is the correct outcome — the user re-runs the review after fixing the underlying issue. If you have already printed `STATUS: partial`, do not produce any artifact afterward.
 
 #### Step 1 — Gate G1 (required first action)
 

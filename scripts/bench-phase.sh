@@ -127,16 +127,84 @@ MEM_PID=$!
 # Ensure mem sampler is killed on any exit (normal, error, signal)
 trap "kill $MEM_PID 2>/dev/null || true; cleanup_memlog" EXIT
 
+# === Fail-fast watcher ===
+# Tail the transcript in background; abort the run if we detect:
+#   (a) tool_result with is_error:true — single hard failure
+#   (b) terminal {"type":"result","subtype":"error"} event — run-level error
+#   (c) single tool call exceeding BENCH_TOOL_TIMEOUT_SEC (default 180s) — pathological slowness
+#   (d) any line containing 'STATUS: partial' — gate failure (agent should already halt, but enforce)
+# On match: kill the claude -p process tree, write FAIL_REASON to a marker file,
+# and let the outer EXIT_CODE capture the kill.
+BENCH_TOOL_TIMEOUT_SEC="${BENCH_TOOL_TIMEOUT_SEC:-180}"
+FAIL_MARKER="$TRANSCRIPT.failreason"
+rm -f "$FAIL_MARKER"
+
+watch_fail_fast() {
+  local trans="$1"
+  local pid="$2"
+  local tool_timeout="$3"
+  local last_progress_ms=0
+  local last_progress_line=0
+  # Wait for the transcript file to exist before tailing
+  for _ in $(seq 1 50); do [ -f "$trans" ] && break; sleep 0.1; done
+  tail -Fn +1 "$trans" 2>/dev/null | while IFS= read -r line; do
+    # (a) is_error:true on a tool_result
+    if printf '%s' "$line" | grep -qF '"is_error":true'; then
+      echo "tool-result-is-error" > "$FAIL_MARKER"
+      kill -TERM "$pid" 2>/dev/null || true
+      return
+    fi
+    # (b) terminal result event with subtype:error
+    if printf '%s' "$line" | grep -qE '"type":"result"[^}]*"subtype":"error"'; then
+      echo "result-subtype-error" > "$FAIL_MARKER"
+      kill -TERM "$pid" 2>/dev/null || true
+      return
+    fi
+    # (d) STATUS: partial — gate failure
+    if printf '%s' "$line" | grep -qF 'STATUS: partial'; then
+      echo "gate-partial" > "$FAIL_MARKER"
+      kill -TERM "$pid" 2>/dev/null || true
+      return
+    fi
+    # (c) pathological single-tool duration
+    if printf '%s' "$line" | grep -qF '"subtype":"task_progress"'; then
+      local dur
+      dur=$(printf '%s' "$line" | grep -oE '"duration_ms":[0-9]+' | grep -oE '[0-9]+' | head -1 || echo 0)
+      if [ "$dur" -gt "$((tool_timeout * 1000))" ]; then
+        echo "tool-duration-${dur}ms>-${tool_timeout}s" > "$FAIL_MARKER"
+        kill -TERM "$pid" 2>/dev/null || true
+        return
+      fi
+    fi
+  done
+}
+
 set +e
-( cd "$TARGET" && echo "$PROMPT" | run_with_timeout "${BENCH_TIMEOUT_SEC}" claude -p \
+( cd "$TARGET" && export CLAUDE_PROJECT_DIR="$PLUGIN_DIR" && echo "$PROMPT" | run_with_timeout "${BENCH_TIMEOUT_SEC}" claude -p \
     --plugin-dir "$PLUGIN_DIR" \
     --settings "$PLUGIN_DIR/scripts/bench-mcp-settings.json" \
     --permission-mode bypassPermissions \
     --output-format stream-json \
     --max-budget-usd "$BENCH_MAX_BUDGET_USD" \
-    --verbose ) > "$TRANSCRIPT" 2>&1
+    --verbose ) > "$TRANSCRIPT" 2>&1 &
+CLAUDE_PID=$!
+watch_fail_fast "$TRANSCRIPT" "$CLAUDE_PID" "$BENCH_TOOL_TIMEOUT_SEC" &
+WATCHER_PID=$!
+trap "kill $MEM_PID 2>/dev/null || true; kill $WATCHER_PID 2>/dev/null || true; cleanup_memlog" EXIT
+
+wait "$CLAUDE_PID" 2>/dev/null
 EXIT_CODE=$?
 set -e
+
+# Stop the watcher now that claude is done
+kill "$WATCHER_PID" 2>/dev/null || true
+
+# If fail-fast fired, override exit code and surface the reason
+if [ -f "$FAIL_MARKER" ]; then
+  FAIL_REASON=$(cat "$FAIL_MARKER")
+  echo "[bench] FAIL-FAST triggered: $FAIL_REASON" >&2
+  EXIT_CODE=130  # 130 = terminated by fail-fast (distinguish from 124 timeout, 0 success)
+fi
 
 END=$(date +%s%N)
 T_WALL=$(( (END - START) / 1000000 ))
