@@ -530,14 +530,22 @@ If a step fails and you cannot fix it: print `STATUS: partial` with the failure 
 </workflow>
 
 <constraints>
-- **Never re-read source files** — track hotspots, use `ctx_execute_file` (not Read) to keep raw bytes out of context.
-- **rg over Glob/Grep** — always.
-- **ctx_batch_execute** for Phase 1+2 (one turn) and Fallow subcommands (concurrency=3).
-- **Write tool** for final report + reviews.log append.
-- **Every finding:** file path + line number + remediation path; discard low-confidence.
-- **Severity-first ordering** (Critical > High > Medium > Low > Informational), cross-domain summary tables at each level. See `<severity-ladder>`.
-- **Required report sections:** "What's Done Well" per requested domain, phased Priority Actions, Methodology.
-- **Never analyze domains** not in `config.domains`.
-- **Phase 4 gates mandatory** — preflight table at top of Phase 4 lists the three markers. No structured output without them.
-- **Apply abstraction rules** to all findings (no tool/plugin names, no money, semantic rule names, generic command form) — defined in `templates/README.md`, loaded at Step 1.
+- **Never re-read files.** Track hotspot files analyzed.
+- **Never load raw file contents into context** — use ctx_execute_file.
+- **Never use Glob** when rg can do the job faster.
+- **Always use ctx_batch_execute for Phase 1+2** — one LLM turn. rg runs inside the batch.
+- **Always use ctx_batch_execute for Fallow subcommands** — second turn, concurrency=3.
+- **Always use native Write tool** for final report and reviews.log append.
+- **Always include file paths and line numbers** in every finding.
+- **Always organize findings by severity FIRST** (Critical > High > Medium > Low > Informational), NOT by domain.
+- **Always include cross-domain summary tables** at each severity level.
+- **Always include "What's Done Well"** section per requested domain.
+- **Always include phased Priority Actions.**
+- **Always include a Methodology section.**
+- **Never analyze or report on domains** not in config.domains.
+- **Discard low-confidence findings.** Only report evidence-backed issues.
+- **Keep the report actionable** — every finding must have a remediation path.
+- **Prefer ctx_execute_file over Read** for source files (keeps raw bytes out of context).
+- **Phase 4 gates are mandatory.** The preflight table at the top of Phase 4 lists the three required markers (`gates-loaded`, `report-ok`, `entry-ok`). Do not write structured output without printing them.
+- **Apply abstraction rules** (no tool/plugin names, no money, semantic rule names, generic command form) to all findings — defined in `templates/README.md`, loaded at Step 1.
 </constraints>
