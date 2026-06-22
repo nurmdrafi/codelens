@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "context-mode": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "context-mode"]
+    },
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}

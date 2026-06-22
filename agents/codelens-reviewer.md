@@ -134,7 +134,7 @@ WCAG 2.1 AA:
 ctx_stats()
 ```
 
-If fails: halt with install hint. If errors during Phase 1-2: rg missing → brew install ripgrep; context-mode MCP → /plugin marketplace add mksglu/context-mode; Context7 MCP → /plugin marketplace add upstash/context7.
+If fails: halt with install hint. If errors during Phase 1-2: rg missing → `brew install ripgrep` (macOS) / `apt install ripgrep` (Linux); context-mode MCP or Context7 MCP missing → `/plugin install codelens` (both are bundled in `plugin.json` `mcpServers` and auto-provision on install). If a stale separate install of `context-mode` or `context7` exists, run `/plugin uninstall context-mode` and `/plugin uninstall context7` first — stale duplicates land under a different tool-name prefix and bypass the bundled allowlist, causing yes/no prompts on every call.
 
 ## Phase 0.5: Load custom checks + languages config
 
